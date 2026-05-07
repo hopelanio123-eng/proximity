@@ -8,11 +8,28 @@ use crate::protocol::Button;
 use crate::protocol::PointerEvent;
 use crate::protocol::PointerEventType;
 
+#[cfg(target_os = "linux")]
+use crate::x11helper::WindowInfo;
+
+#[cfg(target_os = "linux")]
+pub struct Mouse {
+    winfo: WindowInfo,
+}
+
+#[cfg(not(target_os = "linux"))]
 pub struct Mouse {}
 
+#[cfg(target_os = "linux")]
+impl Mouse {
+    pub fn new(winfo: WindowInfo) -> Self {
+        Self { winfo: winfo }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
 impl Mouse {
     pub fn new() -> Self {
-        Mouse {}
+        Self {}
     }
 }
 
@@ -21,11 +38,34 @@ impl PointerDevice for Mouse {
         if !event.is_primary {
             return;
         }
-        if let Err(err) = mouse::move_to(autopilot::geometry::Point::new(
-            event.x * screen_size().width,
-            event.y * screen_size().height,
-        )) {
-            warn!("Could not move mouse: {}", err);
+        #[cfg(target_os = "linux")]
+        {
+            if let Err(err) = self.winfo.activate() {
+                warn!("Failed to activate window, sending no input ({})", err);
+                return;
+            }
+            let geometry = self.winfo.geometry();
+            if let Err(err) = geometry {
+                warn!("Failed to get window geometry, sending no input ({})", err);
+                return;
+            }
+            let geometry = geometry.unwrap();
+            if let Err(err) = mouse::move_to(autopilot::geometry::Point::new(
+                (event.x * geometry.width + geometry.x) * screen_size().width,
+                (event.y * geometry.height + geometry.y) * screen_size().height,
+            )) {
+                warn!("Could not move mouse: {}", err);
+            }
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            if let Err(err) = mouse::move_to(autopilot::geometry::Point::new(
+                event.x * screen_size().width,
+                event.y * screen_size().height,
+            )) {
+                warn!("Could not move mouse: {}", err);
+            }
         }
         match event.event_type {
             PointerEventType::DOWN => match event.button {
@@ -38,8 +78,8 @@ impl PointerDevice for Mouse {
                 mouse::toggle(mouse::Button::Left, false);
                 mouse::toggle(mouse::Button::Middle, false);
                 mouse::toggle(mouse::Button::Right, false);
-            },
-            _=>()
+            }
+            _ => (),
         }
     }
 }

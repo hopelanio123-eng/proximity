@@ -1,11 +1,9 @@
 [package]
-name = "web-tablet"
+name = "Weylus"
 version = "0.1.0"
 authors = ["HMH <henry@freedesk.net>"]
 edition = "2018"
 description = "Use your iPad or Android tablet as graphic tablet."
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 hyper = "^0.13"
@@ -22,13 +20,25 @@ bitflags = "1.2"
 image = "0.22.4"
 base64 = "0.12"
 mtpng = "0.3.4"
-fltk = "^0.3.9"
+fltk = { git = "https://github.com/MoAlyousef/fltk-rs" }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
 pnet = "0.25"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+c_helper = { path = "c_helper" }
 
 [target.'cfg(target_os = "linux")'.build-dependencies]
 cc = "1.0"
 
 [package.metadata.bundle]
-name = "WebTablet"
-identifier = "io.github.h-m-h.web-tablet"
-version = "0.5"
+name = "Weylus"
+identifier = "io.github.h-m-h.weylus"
+
+[package.metadata.deb]
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/weylus", "usr/bin/", "755"],
+]
