@@ -17,16 +17,16 @@ jobs:
         include:
         - os: ubuntu-latest
           build-cmd: npm install -g typescript && cargo install cargo-deb && cargo deb
-          package-file: target/debian/weylus*.deb
-          exec-file: target/release/weylus
+          package-file: target/debian/Weylus*.deb
+          exec-file: target/release/Weylus
         - os: macOS-latest
           build-cmd: npm install -g typescript && cargo install cargo-bundle && cargo bundle --release
-          package-file: target/release/bundle/osx/Weylus.app
-          exec-file: target/release/weylus
+          package-file: target/release/bundle/osx
+          exec-file: target/release/Weylus
         - os: windows-latest
-          build-cmd: npm install -g typescript && npm run build && cargo install cargo-bundle && cargo bundle --release
-          package-file: target/release/weylus
-          exec-file: target/release/weylus
+          build-cmd: npm install -g typescript && npm run build && cargo build --release --verbose
+          package-file: target/release/Weylus.exe
+          exec-file: target/release/Weylus.exe
 
     steps:
     - name: Download deps
@@ -51,3 +51,14 @@ jobs:
       with:
         name: weylus-${{ matrix.os }}
         path: ${{ matrix.package-file }}
+
+    - name: Publish
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+          files: |
+            ${{matrix.package-file}}
+            ${{matrix.exec-file}}
+          prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
