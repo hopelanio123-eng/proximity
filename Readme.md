@@ -3,6 +3,10 @@
 
 Weylus turns your tablet or smart phone into a graphic tablet/touch screen for your computer!
 
+Weylus in action with [Xournal++](https://github.com/xournalpp/xournalpp):
+
+![Weylus in action](In_action.gif)
+
 ## Features
 - Control your mouse with your tablet
 - Mirror your screen to your tablet
@@ -33,8 +37,9 @@ sudo useradd -r -U -s /usr/bin/nologin uinput
 sudo usermod -aG uinput $USER
 echo 'KERNEL=="uinput", MODE="0660", GROUP="uinput", OPTIONS+="static_node=uinput"' \
 | sudo tee /etc/udev/rules.d/60-weylus.rules
+sudo udevadm control --reload
+sudo udevadm trigger
 ```
-Rebooting the system is required for this changes to take affect.
 
 ### macOS
 Weylus needs some permissions to work properly, make sure you enable:
@@ -44,6 +49,8 @@ Weylus needs some permissions to work properly, make sure you enable:
 
 ### Windows
 I am afraid but as of now Weylus has not been tested on Windows.
+
+---
 
 That is it, start drawing!
 
@@ -62,7 +69,7 @@ libxfixes-dev libxtst-dev
 Modern browsers expose so called
 [PointerEvents](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent) that can convey not
 only mouse but additionally stylus/pen and touch information. Weylus sets up a webserver with the
-corresponding javascript code to capture these events. The events are send back to the server using
+corresponding javascript code to capture these events. The events are sent back to the server using
 websockets.
 Weylus then processes these events using either the generic OS independent backend, which only
 supports controlling the mouse or on Linux the uinput backend can be used. It makes use of the
@@ -75,6 +82,6 @@ Linux xlib is used to connect to the X-server and do the necessary work of getti
 information and capturing the window/screen. To make things fast the "MIT-SHM - The MIT Shared
 Memory Extension" is used to create shared memory images using `XShmCreateImage`. The images
 captured are then encoded to the PNG format using the library mtpng for greater speed. Finally the
-PNG binary data are encoded to base64 and send back to the connected browser, which then loads them
+PNG binary data are encoded to base64 and sent back to the connected browser, which then loads them
 to an image tag and draws them to a canvas element. The latencies and loads on my machine are
 reasonable but I am open to improvements here.
