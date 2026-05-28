@@ -1,6 +1,6 @@
 use handlebars::Handlebars;
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use hyper::{Body, Method, Request, Response, Server, StatusCode, server::conn::AddrStream};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -8,7 +8,7 @@ use std::sync::mpsc;
 use std::sync::mpsc::SendError;
 use std::sync::Arc;
 use tokio::sync::mpsc as mpsc_tokio;
-use tracing::warn;
+use tracing::{info, warn, error};
 
 #[derive(Serialize)]
 struct WebConfig {
@@ -34,9 +34,10 @@ fn response_not_found() -> Response<Body> {
 }
 
 async fn serve<'a>(
+    addr: SocketAddr,
     req: Request<Body>,
     context: Arc<Context<'a>>,
-    sender: mpsc::Sender<Web2GuiMessage>,
+    _sender: mpsc::Sender<Web2GuiMessage>,
 ) -> Result<Response<Body>, hyper::Error> {
     let context = &*context;
     let mut authed = false;
@@ -50,7 +51,7 @@ async fn serve<'a>(
                 if let Some(pass) = params.get("password") {
                     if pass == password {
                         authed = true;
-                        log_gui_send_error(sender.send(Web2GuiMessage::Info(format!("User authed."))));
+                        info!("Client authenticated: {}.", &addr);
                     }
                 }
             }
@@ -69,6 +70,7 @@ async fn serve<'a>(
                     "text/html; charset=utf-8",
                 ));
             }
+            info!("Client connected: {}", &addr);
             let config = WebConfig {
                 password: context.password.clone(),
                 websocket_pointer_port: context.ws_pointer_port,
@@ -97,8 +99,6 @@ pub enum Gui2WebMessage {
     Shutdown,
 }
 pub enum Web2GuiMessage {
-    Info(String),
-    Error(String),
     Shutdown,
 }
 
@@ -136,10 +136,10 @@ pub fn run(
 
     let context = Context {
         bind_addr: *bind_addr,
-        ws_pointer_port: ws_pointer_port,
-        ws_video_port: ws_video_port,
-        password: password,
-        templates: templates,
+        ws_pointer_port,
+        ws_video_port,
+        password,
+        templates,
     };
     std::thread::spawn(move || run_server(context, sender, receiver));
 }
@@ -155,13 +155,14 @@ async fn run_server(
 
     let sender = sender.clone();
     let sender2 = sender.clone();
-    let service = make_service_fn(move |_| {
+    let service = make_service_fn(move |s: &AddrStream| {
+        let addr = s.remote_addr();
         let context = context.clone();
         let sender = sender.clone();
         async move {
             Ok::<_, hyper::Error>(service_fn(move |req| {
                 let context = context.clone();
-                serve(req, context, sender.clone())
+                serve(addr, req, context, sender.clone())
             }))
         }
     });
@@ -174,16 +175,10 @@ async fn run_server(
             }
         }
     });
-    log_gui_send_error(sender2.send(Web2GuiMessage::Info(format!(
-        "Webserver listening at {}...",
-        addr
-    ))));
+    info!("Webserver listening at {}...", addr);
     match server.await {
-        Ok(_) => log_gui_send_error(sender2.send(Web2GuiMessage::Info("Webserver shutdown!".into()))),
-        Err(err) => log_gui_send_error(sender2.send(Web2GuiMessage::Error(format!(
-            "Webserver exited error: {}",
-            err
-        )))),
+        Ok(_) => info!("Webserver shutdown!"),
+        Err(err) => error!("Webserver exited error: {}", err),
     };
     log_gui_send_error(sender2.send(Web2GuiMessage::Shutdown));
 }
