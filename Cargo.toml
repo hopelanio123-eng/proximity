@@ -1,6 +1,6 @@
 [package]
 name = "weylus"
-version = "0.6.1"
+version = "0.6.2"
 authors = ["HMH <henry@freedesk.net>"]
 license = "AGPL-3.0-or-later"
 edition = "2018"
@@ -30,6 +30,9 @@ pnet = "0.25"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 c_helper = { path = "c_helper" }
+
+[features]
+bench = []
 
 [package.metadata.bundle]
 name = "Weylus"
