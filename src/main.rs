@@ -5,10 +5,6 @@ extern crate test;
 #[macro_use]
 extern crate bitflags;
 
-#[cfg(target_os = "linux")]
-#[macro_use]
-extern crate c_helper;
-
 use std::io::Write;
 use std::sync::mpsc;
 use tracing_subscriber;
@@ -73,7 +69,6 @@ fn main() {
     let logger = tracing_subscriber::fmt()
         .with_max_level(level)
         .finish()
-        .with(tracing_subscriber::fmt::Layer::default())
         .with(
             tracing_subscriber::fmt::Layer::default()
                 .with_ansi(false)

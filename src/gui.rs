@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use std::sync::{mpsc, Arc, Mutex};
 use tokio::sync::mpsc as mpsc_tokio;
-use tracing::info;
+use tracing::{error, info};
 
 use fltk::{
     app::App,
@@ -28,7 +28,7 @@ use crate::web::{Gui2WebMessage, Web2GuiMessage};
 use crate::websocket::Gui2WsMessage;
 
 #[cfg(target_os = "linux")]
-use crate::x11helper::X11Context;
+use crate::x11helper::{Capturable, X11Context};
 
 pub fn run(log_receiver: mpsc::Receiver<String>) {
     fltk::app::lock().unwrap();
@@ -112,30 +112,30 @@ pub fn run(log_receiver: mpsc::Receiver<String>) {
     }
 
     #[cfg(target_os = "linux")]
-    let label_window_choice = Frame::default()
+    let label_capturable_choice = Frame::default()
         .with_size(width, height)
         .below_of(&check_faster_screencapture, padding)
-        .with_label("Window to capture:");
+        .with_label("Capture:");
 
     #[cfg(not(target_os = "linux"))]
-    let label_window_choice = Frame::default()
+    let label_capturable_choice = Frame::default()
         .with_size(width, height)
         .below_of(&check_faster_screencapture, padding)
-        .with_label("Capturing windows is\nonly supported on Linux!");
+        .with_label("Capturing windows/regions is\nonly supported on Linux!");
 
     #[allow(unused_mut)]
-    let mut choice_window = Choice::default()
+    let mut choice_capturable = Choice::default()
         .with_size(width, height)
-        .below_of(&label_window_choice, 0);
+        .below_of(&label_capturable_choice, 0);
     #[cfg(not(target_os = "linux"))]
-    choice_window.deactivate();
+    choice_capturable.deactivate();
 
-    let mut but_update_windows = Button::default()
+    let mut but_update_capturables = Button::default()
         .with_size(width, height)
-        .below_of(&choice_window, padding)
+        .below_of(&choice_capturable, padding)
         .with_label("Refresh");
     #[cfg(not(target_os = "linux"))]
-    but_update_windows.deactivate();
+    but_update_capturables.deactivate();
 
     let mut output_buf = TextBuffer::default();
     let output = TextDisplay::default(&mut output_buf)
@@ -153,7 +153,7 @@ pub fn run(log_receiver: mpsc::Receiver<String>) {
     wind.show();
 
     let but_toggle_ref = Rc::new(RefCell::new(but_toggle));
-    let choice_window_ref = Rc::new(RefCell::new(choice_window));
+    let choice_capturable_ref = Rc::new(RefCell::new(choice_capturable));
     let check_faster_screencapture_ref = Rc::new(RefCell::new(check_faster_screencapture));
     let output_server_addr = Arc::new(Mutex::new(output_server_addr));
     let output = Arc::new(Mutex::new(output));
@@ -177,7 +177,6 @@ pub fn run(log_receiver: mpsc::Receiver<String>) {
             while let Ok(message) = receiver_web2gui.recv() {
                 match message {
                     Web2GuiMessage::Shutdown => {
-                        info!("Webserver: shutdown!");
                         let mut output_server_addr = output_server_addr.lock().unwrap();
                         output_server_addr.hide();
                     }
@@ -189,33 +188,28 @@ pub fn run(log_receiver: mpsc::Receiver<String>) {
     #[cfg(target_os = "linux")]
     let mut x11_context = X11Context::new().unwrap();
     #[cfg(target_os = "linux")]
-    let capture_window = Rc::new(RefCell::new(x11_context.root_window()));
+    let current_capturable = Rc::new(RefCell::new(Option::<Capturable>::None));
 
     #[cfg(target_os = "linux")]
     {
-        let capture_window = capture_window.clone();
+        let current_capturable = current_capturable.clone();
 
         {
-            let choice_window_ref = choice_window_ref.clone();
-            but_update_windows.set_callback(Box::new(move || {
-                let mut choice_window = choice_window_ref.borrow_mut();
-                choice_window.clear();
+            let choice_capturable_ref = choice_capturable_ref.clone();
+            but_update_capturables.set_callback(Box::new(move || {
+                let mut choice_capturable = choice_capturable_ref.borrow_mut();
+                choice_capturable.clear();
+                let capturables = x11_context.capturables().unwrap();
                 {
-                    let root_window = x11_context.root_window();
-                    let capture_window = capture_window.clone();
-                    choice_window.add(
-                        &root_window.name(),
-                        Shortcut::None,
-                        MenuFlag::Normal,
-                        Box::new(move || {
-                            let capture_window = capture_window.clone();
-                            capture_window.replace(root_window);
-                        }),
-                    );
+                    let mut current_capturable = current_capturable.borrow_mut();
+                    if current_capturable.is_none() {
+                        let first_capturable = capturables[0].clone();
+                        current_capturable.replace(first_capturable);
+                    }
                 }
-                for window in x11_context.windows().unwrap() {
-                    let capture_window = capture_window.clone();
-                    let chars = window
+                for c in capturables {
+                    let current_capturable = current_capturable.clone();
+                    let chars = c
                         .name()
                         .replace("\\", "\\\\")
                         .replace("/", "\\/")
@@ -230,19 +224,19 @@ pub fn run(log_receiver: mpsc::Receiver<String>) {
                         }
                         name.push(c);
                     }
-                    choice_window.add(
+                    choice_capturable.add(
                         &name,
                         Shortcut::None,
                         MenuFlag::Normal,
                         Box::new(move || {
-                            capture_window.replace(window);
+                            current_capturable.replace(Some(c.clone()));
                         }),
                     );
                 }
             }));
         }
 
-        but_update_windows.do_callback();
+        but_update_capturables.do_callback();
 
         let check_faster_screencapture_ref = check_faster_screencapture_ref.clone();
 
@@ -251,13 +245,13 @@ pub fn run(log_receiver: mpsc::Receiver<String>) {
             .borrow_mut()
             .set_callback(Box::new(move || {
                 let checked = !check_faster_screencapture_ref.borrow().is_checked();
-                let mut choice_window = choice_window_ref.borrow_mut();
+                let mut choice_capturable = choice_capturable_ref.borrow_mut();
                 if checked {
-                    choice_window.deactivate();
-                    but_update_windows.deactivate();
+                    choice_capturable.deactivate();
+                    but_update_capturables.deactivate();
                 } else {
-                    choice_window.activate();
-                    but_update_windows.activate();
+                    choice_capturable.activate();
+                    but_update_capturables.activate();
                 }
             }));
     }
@@ -300,7 +294,7 @@ pub fn run(log_receiver: mpsc::Receiver<String>) {
                         screen_update_interval,
                         check_stylus.is_checked(),
                         check_faster_screencapture_ref.borrow().is_checked(),
-                        capture_window.clone().borrow().clone(),
+                        current_capturable.clone().borrow().as_ref().unwrap().clone(),
                     );
                     #[cfg(not(target_os = "linux"))]
                     crate::websocket::run(
@@ -326,36 +320,34 @@ pub fn run(log_receiver: mpsc::Receiver<String>) {
 
                     #[cfg(not(target_os = "windows"))]
                     {
-                    if web_sock.ip().is_unspecified() {
-                        // try to guess an ip
-                        let mut ips = Vec::<IpAddr>::new();
-                        for iface in datalink::interfaces()
-                            .iter()
-                            .filter(|iface| iface.is_up() && !iface.is_loopback())
-                        {
-                            for ipnetw in &iface.ips {
-                                if (ipnetw.is_ipv4() && web_sock.ip().is_ipv4())
-                                    || (ipnetw.is_ipv6() && web_sock.ip().is_ipv6())
-                                {
-                                    // filtering ipv6 unicast requires nightly or more fiddling,
-                                    // lets wait for nightlies to stabilize...
-                                    ips.push(ipnetw.ip())
+                        if web_sock.ip().is_unspecified() {
+                            // try to guess an ip
+                            let mut ips = Vec::<IpAddr>::new();
+                            for iface in datalink::interfaces()
+                                .iter()
+                                .filter(|iface| iface.is_up() && !iface.is_loopback())
+                            {
+                                for ipnetw in &iface.ips {
+                                    if (ipnetw.is_ipv4() && web_sock.ip().is_ipv4())
+                                        || (ipnetw.is_ipv6() && web_sock.ip().is_ipv6())
+                                    {
+                                        // filtering ipv6 unicast requires nightly or more fiddling,
+                                        // lets wait for nightlies to stabilize...
+                                        ips.push(ipnetw.ip())
+                                    }
+                                }
+                            }
+                            if ips.len() > 0 {
+                                web_sock.set_ip(ips[0]);
+                            }
+                            if ips.len() > 1 {
+                                info!("Found more than one IP address for browsers to connect to,");
+                                info!("other urls are:");
+                                for ip in &ips[1..] {
+                                    info!("http://{}", SocketAddr::new(*ip, web_port));
                                 }
                             }
                         }
-                        if ips.len() > 0 {
-                            web_sock.set_ip(ips[0]);
-                        }
-                        if ips.len() > 1 {
-                            let output = output.lock()?;
-                            output.insert(
-                                "Info: Found more than one IP address for browsers to connect to,\nInfo: other urls are:\n"
-                            );
-                            for ip in &ips[1..] {
-                                output.insert(&format!("Info: http://{}\n", SocketAddr::new(*ip, web_port)));
-                            }
-                        }
-                    }
                     }
                     let mut output_server_addr = output_server_addr.lock()?;
 
@@ -366,7 +358,8 @@ pub fn run(log_receiver: mpsc::Receiver<String>) {
                         if web_sock.ip().is_unspecified() {
                             output_server_addr.set_value("http://<your ip address>");
                         } else {
-                            output_server_addr.set_value(&format!("http://{}", web_sock.to_string()));
+                            output_server_addr
+                                .set_value(&format!("http://{}", web_sock.to_string()));
                         }
                     }
                     output_server_addr.show();
@@ -384,8 +377,7 @@ pub fn run(log_receiver: mpsc::Receiver<String>) {
                 is_server_running = !is_server_running;
                 Ok(())
             }() {
-                let output = output.lock().unwrap();
-                output.insert(&format!("Error: {}\n", err));
+                error!("{}", err);
             };
         }));
 
