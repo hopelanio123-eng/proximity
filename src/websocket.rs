@@ -81,7 +81,9 @@ pub fn run(
                     clients2,
                     shutdown2,
                     sender2,
-                    move || create_graphic_tablet_stream_handler(capture.clone()),
+                    move |client_addr| {
+                        create_graphic_tablet_stream_handler(client_addr, capture.clone())
+                    },
                 )
             });
         } else {
@@ -92,7 +94,7 @@ pub fn run(
                     clients2,
                     shutdown2,
                     sender2,
-                    move || create_mouse_stream_handler(capture.clone()),
+                    move |_| create_mouse_stream_handler(capture.clone()),
                 )
             });
         }
@@ -108,7 +110,7 @@ pub fn run(
                     clients3,
                     shutdown3,
                     sender3,
-                    move || {
+                    move |_| {
                         create_xscreen_stream_handler(
                             capture.clone(),
                             screen_update_interval,
@@ -125,7 +127,7 @@ pub fn run(
                     clients3,
                     shutdown3,
                     sender3,
-                    move || create_screen_stream_handler(screen_update_interval),
+                    move |_| create_screen_stream_handler(screen_update_interval),
                 )
             });
         }
@@ -190,16 +192,20 @@ pub fn run(
             clients3,
             shutdown3,
             sender3,
-            move || create_screen_stream_handler(screen_update_interval),
+            move |_| create_screen_stream_handler(screen_update_interval),
         )
     });
 }
 
 #[cfg(target_os = "linux")]
 fn create_graphic_tablet_stream_handler(
+    client_addr: &SocketAddr,
     capture: Capturable,
 ) -> Result<PointerStreamHandler<GraphicTablet>, Box<dyn std::error::Error>> {
-    Ok(PointerStreamHandler::new(GraphicTablet::new(capture)?))
+    Ok(PointerStreamHandler::new(GraphicTablet::new(
+        capture,
+        client_addr.to_string(),
+    )?))
 }
 
 #[cfg(target_os = "linux")]
@@ -210,7 +216,7 @@ fn create_mouse_stream_handler(
 }
 
 #[cfg(not(target_os = "linux"))]
-fn create_mouse_stream_handler() -> Result<PointerStreamHandler<Mouse>, Box<dyn std::error::Error>>
+fn create_mouse_stream_handler(_client_addr: &SocketAddr) -> Result<PointerStreamHandler<Mouse>, Box<dyn std::error::Error>>
 {
     Ok(PointerStreamHandler::new(Mouse::new()))
 }
@@ -245,7 +251,7 @@ fn listen_websocket<T, F>(
     create_stream_handler: F,
 ) where
     T: StreamHandler,
-    F: Fn() -> Result<T, Box<dyn std::error::Error>> + Send + 'static + Clone,
+    F: Fn(&SocketAddr) -> Result<T, Box<dyn std::error::Error>> + Send + 'static + Clone,
 {
     let server = Server::bind(addr);
     if let Err(err) = server {
@@ -296,7 +302,7 @@ fn listen_websocket<T, F>(
 
                     let ws_sender = Arc::new(Mutex::new(ws_sender));
 
-                    let stream_handler = create_stream_handler();
+                    let stream_handler = create_stream_handler(&peer_addr);
                     if let Err(err) = stream_handler {
                         error!("Failed to create stream handler: {}", err);
                         return;
