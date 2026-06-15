@@ -7,13 +7,17 @@ extern "C" {
     fn init_video_encoder(rust_ctx: *mut c_void, width: c_int, height: c_int) -> *mut c_void;
     fn open_video(handle: *mut c_void, err: *mut CError);
     fn destroy_video_encoder(handle: *mut c_void);
-    fn get_video_frame_data(
-        handle: *const c_void,
-        y_linesize: *mut c_int,
-        u_linesize: *mut c_int,
-        v_linesize: *mut c_int,
-    ) -> *const *mut u8;
+    fn get_video_frame_data(handle: *const c_void, linesizes: *const *mut c_int) -> *const *mut u8;
     fn encode_video_frame(handle: *mut c_void, micros: c_int, err: *mut CError);
+
+    fn convert_bgra2yuv420p(
+        ctx: *mut c_void,
+        src: *const u8,
+        width: c_int,
+        height: c_int,
+        dst: *const *mut u8,
+        dst_stride: *const c_int,
+    );
 }
 
 #[no_mangle]
@@ -23,6 +27,15 @@ fn write_video_packet(video_encoder: *mut c_void, buf: *const c_uchar, buf_size:
         std::slice::from_raw_parts(buf as *const u8, buf_size as usize)
     });
     0
+}
+
+pub enum PixelProvider<'a> {
+    // no restrictions on dimension
+    BGRA(&'a [u8]),
+
+    // this writes to raw yuv420p ffmpeg buffers and those require that width and height are
+    // even, this means a column or row of pixels of the source image might need to be clipped
+    FillYUV420P(Box<dyn FnOnce(&mut [u8], &mut [u8], &mut [u8], usize, usize, usize) + 'a>),
 }
 
 pub struct VideoEncoder {
@@ -40,8 +53,8 @@ impl VideoEncoder {
         write_data: impl Fn(&[u8]) + 'static,
     ) -> Result<Box<Self>, CError> {
         // yuv420p only supports even width and height
-        let width = width - width % 2;
-        let height = height - height % 2;
+        let width = width;
+        let height = height;
         let mut video_encoder = Box::new(Self {
             handle: std::ptr::null_mut(),
             width,
@@ -68,33 +81,48 @@ impl VideoEncoder {
 
     pub fn encode(
         &mut self,
-        fill_yuv: impl Fn(&mut [u8], &mut [u8], &mut [u8], usize, usize, usize),
+        pixel_provider: PixelProvider
     ) {
-        let mut y_linesize: c_int = 0;
-        let mut u_linesize: c_int = 0;
-        let mut v_linesize: c_int = 0;
-        let data = unsafe {
-            get_video_frame_data(
+        let linsizes: *mut c_int = std::ptr::null_mut();
+        let data = unsafe { get_video_frame_data(self.handle, &linsizes) };
+        match pixel_provider {
+            PixelProvider::BGRA(bgra) => unsafe {
+                convert_bgra2yuv420p(
+                    self.handle,
+                    bgra.as_ptr(),
+                    self.width as c_int,
+                    self.height as c_int,
+                    data,
+                    linsizes,
+                );
+            },
+            PixelProvider::FillYUV420P(fill_yuv) => {
+                let linesizes_slice = unsafe { std::slice::from_raw_parts(linsizes, 3) };
+                let y_linesize = linesizes_slice[0] as usize;
+                let u_linesize = linesizes_slice[1] as usize;
+                let v_linesize = linesizes_slice[2] as usize;
+                let data = unsafe { std::slice::from_raw_parts(data, 3) };
+                let y =
+                    unsafe { std::slice::from_raw_parts_mut(data[0], y_linesize * self.height) };
+                let u =
+                    unsafe { std::slice::from_raw_parts_mut(data[1], u_linesize * self.height) };
+                let v =
+                    unsafe { std::slice::from_raw_parts_mut(data[2], v_linesize * self.height) };
+                fill_yuv(y, u, v, y_linesize, u_linesize, v_linesize);
+            }
+        }
+        let mut err = CError::new();
+        unsafe {
+            encode_video_frame(
                 self.handle,
-                &mut y_linesize,
-                &mut u_linesize,
-                &mut v_linesize,
+                (Instant::now() - self.start_time).as_millis() as c_int,
+                &mut err,
             )
         };
-        let y_linesize = y_linesize as usize;
-        let u_linesize = u_linesize as usize;
-        let v_linesize = v_linesize as usize;
-        let data = unsafe { std::slice::from_raw_parts(data, 3) };
-        let y = unsafe { std::slice::from_raw_parts_mut(data[0], y_linesize * self.height) };
-        let u = unsafe { std::slice::from_raw_parts_mut(data[1], u_linesize * self.height) };
-        let v = unsafe { std::slice::from_raw_parts_mut(data[2], v_linesize * self.height) };
-        fill_yuv(y, u, v, y_linesize, u_linesize, v_linesize);
-        let mut err = CError::new();
-        unsafe { encode_video_frame(self.handle, (Instant::now() - self.start_time).as_micros() as c_int, &mut err) };
     }
 
     pub fn check_size(&self, width: usize, height: usize) -> bool {
-        (self.width == width - width % 2) && (self.height == height - height % 2)
+        (self.width == width) && (self.height == height)
     }
 }
 
