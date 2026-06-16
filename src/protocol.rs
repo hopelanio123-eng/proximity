@@ -1,8 +1,28 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum NetMessage {
+pub struct ClientConfiguration {
+    pub stylus_support: bool,
+    pub faster_capture: bool,
+    pub capturable_id: usize,
+    pub capture_cursor: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum MessageInbound {
     PointerEvent(PointerEvent),
+    GetFrame,
+    GetCapturableList,
+    Config(ClientConfiguration),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum MessageOutbound {
+    CapturableList(Vec<String>),
+    NewVideo,
+    ConfigOk,
+    ConfigError(String),
+    Error(String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
