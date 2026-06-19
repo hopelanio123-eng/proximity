@@ -7,31 +7,73 @@ use crate::input::device::InputDevice;
 use crate::protocol::Button;
 use crate::protocol::PointerEvent;
 use crate::protocol::PointerEventType;
+use crate::protocol::PointerType;
 
 #[cfg(target_os = "linux")]
 use crate::x11helper::Capturable;
 
+#[cfg(target_os = "linux")]
 pub struct Mouse {
-    #[cfg(target_os = "linux")]
     capture: Capturable,
+    enable_mouse: bool,
+    enable_stylus: bool,
+    enable_touch: bool,
+}
+
+#[cfg(not(target_os = "linux"))]
+pub struct Mouse {
+    enable_mouse: bool,
+    enable_stylus: bool,
+    enable_touch: bool,
 }
 
 #[cfg(target_os = "linux")]
 impl Mouse {
-    pub fn new(capture: Capturable) -> Self {
-        Self { capture }
+    pub fn new(
+        capture: Capturable,
+        enable_mouse: bool,
+        enable_stylus: bool,
+        enable_touch: bool,
+    ) -> Self {
+        Self {
+            capture,
+            enable_mouse,
+            enable_stylus,
+            enable_touch,
+        }
     }
 }
 
 #[cfg(not(target_os = "linux"))]
 impl Mouse {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(enable_mouse: bool, enable_stylus: bool, enable_touch: bool) -> Self {
+        Self {
+            enable_mouse,
+            enable_stylus,
+            enable_touch,
+        }
     }
 }
 
 impl InputDevice for Mouse {
     fn send_event(&mut self, event: &PointerEvent) {
+        match event.pointer_type {
+            PointerType::Mouse | PointerType::Unknown => {
+                if !self.enable_mouse {
+                    return;
+                }
+            }
+            PointerType::Pen => {
+                if !self.enable_stylus {
+                    return;
+                }
+            }
+            PointerType::Touch => {
+                if !self.enable_touch {
+                    return;
+                }
+            }
+        }
         if !event.is_primary {
             return;
         }

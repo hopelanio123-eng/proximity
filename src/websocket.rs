@@ -181,109 +181,13 @@ fn handle_connection(
     }
 }
 
-fn send_msg(sender: &WsWriter, msg: &MessageOutbound) {
-    if let Err(err) = sender
-        .lock()
-        .unwrap()
-        .send_message(&Message::text(serde_json::to_string(msg).unwrap()))
-    {
-        warn!("Failed to send message to websocket: {}", err);
-    }
-}
-
-struct VideoConfig {
-    #[cfg(target_os = "linux")]
-    capturable: Capturable,
-    #[cfg(target_os = "linux")]
-    capture_cursor: bool,
-    #[cfg(target_os = "linux")]
-    x11_capture: bool,
-}
-
-enum VideoCommands {
-    Start(VideoConfig),
-    GetFrame,
-}
-
-fn handle_video(receiver: mpsc::Receiver<VideoCommands>, sender: WsWriter) {
-    let mut screen_capture: Option<Box<dyn ScreenCapture>> = None;
-    let mut video_encoder: Option<Box<VideoEncoder>> = None;
-
-    loop {
-        match receiver.recv() {
-            Ok(msg) => {
-                match msg {
-                    VideoCommands::GetFrame => {
-                        if screen_capture.is_none() {
-                            warn!("Screen capture not initalized, can not send video frame!");
-                            continue;
-                        }
-                        screen_capture.as_mut().unwrap().capture();
-                        let screen_capture = screen_capture.as_ref().unwrap();
-                        let (width, height) = screen_capture.size();
-                        // video encoder is not setup or setup for encoding the wrong size: restart it
-                        if video_encoder.is_none()
-                            || !video_encoder.as_ref().unwrap().check_size(width, height)
-                        {
-                            send_msg(&sender, &MessageOutbound::NewVideo);
-                            let sender = sender.clone();
-                            let res = VideoEncoder::new(width, height, move |data| {
-                                let msg = Message::binary(data);
-                                if let Err(err) = sender.lock().unwrap().send_message(&msg) {
-                                    match err {
-                                        WebSocketError::IoError(err) => {
-                                            // ignore broken pipe errors as those are caused by
-                                            // intentionally shutting down the websocket
-                                            if err.kind() == std::io::ErrorKind::BrokenPipe {
-                                                trace!("Error sending video: {}", err);
-                                            } else {
-                                                warn!("Error sending video: {}", err);
-                                            }
-                                        }
-                                        _ => warn!("Error sending video: {}", err),
-                                    }
-                                }
-                            });
-                            if let Err(err) = res {
-                                warn!("{}", err);
-                                continue;
-                            }
-                            video_encoder = Some(res.unwrap());
-                        }
-                        let video_encoder = video_encoder.as_mut().unwrap();
-                        video_encoder.encode(screen_capture.pixel_provider());
-                    }
-                    VideoCommands::Start(config) => {
-                        #[cfg(target_os = "linux")]
-                        {
-                            if config.x11_capture {
-                                screen_capture = Some(Box::new(
-                                    ScreenCaptureX11::new(config.capturable, config.capture_cursor)
-                                        .unwrap(),
-                                ))
-                            } else {
-                                screen_capture = Some(Box::new(ScreenCaptureGeneric::new()))
-                            }
-                        }
-
-                        #[cfg(not(target_os = "linux"))]
-                        {
-                            screen_capture = Some(Box::new(ScreenCaptureGeneric::new()));
-                        }
-                        send_msg(&sender, &MessageOutbound::ConfigOk);
-                    }
-                }
-            }
-            Err(_) => return,
-        }
-    }
-}
-
 struct WsHandler {
     sender: WsWriter,
     client_addr: SocketAddr,
-    video_sender: mpsc::Sender<VideoCommands>,
+    screen_capture: Option<Box<dyn ScreenCapture>>,
+    video_encoder: Option<Box<VideoEncoder>>,
     input_device: Option<Box<dyn InputDevice>>,
+    config: ClientConfiguration,
     #[cfg(target_os = "linux")]
     x11ctx: Option<X11Context>,
     #[cfg(target_os = "linux")]
@@ -292,16 +196,13 @@ struct WsHandler {
 
 impl WsHandler {
     fn new(sender: WsWriter, client_addr: &SocketAddr) -> Self {
-        let (video_sender, video_receiver) = mpsc::channel::<VideoCommands>();
-        {
-            let sender = sender.clone();
-            spawn(move || handle_video(video_receiver, sender));
-        }
         Self {
             sender,
             client_addr: *client_addr,
-            video_sender,
+            screen_capture: None,
+            video_encoder: None,
             input_device: None,
+            config: ClientConfiguration::new(),
             #[cfg(target_os = "linux")]
             x11ctx: X11Context::new(),
             #[cfg(target_os = "linux")]
@@ -310,11 +211,59 @@ impl WsHandler {
     }
 
     fn send_msg(&self, msg: &MessageOutbound) {
-        send_msg(&self.sender, msg)
+        if let Err(err) = self
+            .sender
+            .lock()
+            .unwrap()
+            .send_message(&Message::text(serde_json::to_string(msg).unwrap()))
+        {
+            warn!("Failed to send message to websocket: {}", err);
+        }
     }
 
     fn send_video_frame(&mut self) {
-        self.video_sender.send(VideoCommands::GetFrame).unwrap();
+        if self.screen_capture.is_none() {
+            warn!("Screen capture not initalized, can not send video frame!");
+            return;
+        }
+        self.screen_capture.as_mut().unwrap().capture();
+        let screen_capture = self.screen_capture.as_ref().unwrap();
+        let (width, height) = screen_capture.size();
+        // video encoder is not setup or setup for encoding the wrong size: restart it
+        if self.video_encoder.is_none()
+            || !self
+                .video_encoder
+                .as_ref()
+                .unwrap()
+                .check_size(width, height)
+        {
+            self.send_msg(&MessageOutbound::NewVideo);
+            let sender = self.sender.clone();
+            let res = VideoEncoder::new(width, height, move |data| {
+                let msg = Message::binary(data);
+                if let Err(err) = sender.lock().unwrap().send_message(&msg) {
+                    match err {
+                        WebSocketError::IoError(err) => {
+                            // ignore broken pipe errors as those are caused by
+                            // intentionally shutting down the websocket
+                            if err.kind() == std::io::ErrorKind::BrokenPipe {
+                                trace!("Error sending video: {}", err);
+                            } else {
+                                warn!("Error sending video: {}", err);
+                            }
+                        }
+                        _ => warn!("Error sending video: {}", err),
+                    }
+                }
+            });
+            if let Err(err) = res {
+                warn!("{}", err);
+                return;
+            }
+            self.video_encoder = Some(res.unwrap());
+        }
+        let video_encoder = self.video_encoder.as_mut().unwrap();
+        video_encoder.encode(screen_capture.pixel_provider());
     }
 
     fn process_pointer_event(&mut self, event: &PointerEvent) {
@@ -334,16 +283,18 @@ impl WsHandler {
 
         #[cfg(target_os = "linux")]
         {
-            if let Some(x11ctx) = self.x11ctx.as_mut() {
-                let capturables = x11ctx.capturables();
-                match capturables {
-                    Ok(capturables) => {
-                        capturables.iter().for_each(|c| {
-                            windows.push(c.name());
-                        });
-                        self.capturables = capturables;
+            if self.config.faster_capture {
+                if let Some(x11ctx) = self.x11ctx.as_mut() {
+                    let capturables = x11ctx.capturables();
+                    match capturables {
+                        Ok(capturables) => {
+                            capturables.iter().for_each(|c| {
+                                windows.push(c.name());
+                            });
+                            self.capturables = capturables;
+                        }
+                        Err(err) => warn!("Failed to get list of capturables: {}", err),
                     }
-                    Err(err) => warn!("Failed to get list of capturables: {}", err),
                 }
             } else {
                 windows.push("Desktop".to_string());
@@ -353,14 +304,18 @@ impl WsHandler {
     }
 
     fn setup(&mut self, config: ClientConfiguration) {
+        self.config = config;
         #[cfg(target_os = "linux")]
         {
-            if config.capturable_id < self.capturables.len() {
-                let capturable = self.capturables[config.capturable_id].clone();
-                if config.stylus_support {
+            if self.config.capturable_id < self.capturables.len() {
+                let capturable = self.capturables[self.config.capturable_id].clone();
+                if self.config.stylus_support {
                     let device = crate::input::uinput_device::GraphicTablet::new(
                         capturable.clone(),
                         self.client_addr.to_string(),
+                        self.config.enable_mouse,
+                        self.config.enable_stylus,
+                        self.config.enable_touch,
                     );
                     if let Err(err) = device {
                         error!("Failed to create uinput device: {}", err);
@@ -373,31 +328,41 @@ impl WsHandler {
                 } else {
                     self.input_device = Some(Box::new(crate::input::mouse_device::Mouse::new(
                         capturable.clone(),
+                        self.config.enable_mouse,
+                        self.config.enable_stylus,
+                        self.config.enable_touch,
                     )))
                 }
 
-                self.video_sender
-                    .send(VideoCommands::Start(VideoConfig {
-                        capturable,
-                        capture_cursor: config.capture_cursor,
-                        x11_capture: config.faster_capture,
-                    }))
-                    .unwrap();
+                if self.config.faster_capture {
+                    self.screen_capture = Some(Box::new(
+                        ScreenCaptureX11::new(capturable, self.config.capture_cursor).unwrap(),
+                    ))
+                } else {
+                    self.screen_capture = Some(Box::new(ScreenCaptureGeneric::new()))
+                }
             } else {
-                error!("Got invalid id for capturable: {}", config.capturable_id);
+                error!(
+                    "Got invalid id for capturable: {}",
+                    self.config.capturable_id
+                );
                 self.send_msg(&MessageOutbound::ConfigError(
                     "Invalid id for capturable!".to_string(),
                 ));
+                return;
             }
         }
 
         #[cfg(not(target_os = "linux"))]
         {
-            self.input_device = Some(Box::new(crate::input::mouse_device::Mouse::new()));
-            self.video_sender
-                .send(VideoCommands::Start(VideoConfig {}))
-                .unwrap();
+            self.input_device = Some(Box::new(crate::input::mouse_device::Mouse::new(
+                self.config.enable_mouse,
+                self.config.enable_stylus,
+                self.config.enable_touch,
+            )));
+            self.screen_capture = Some(Box::new(ScreenCaptureGeneric::new()));
         }
+        self.send_msg(&MessageOutbound::ConfigOk);
     }
 
     fn process(&mut self, message: &OwnedMessage) {
