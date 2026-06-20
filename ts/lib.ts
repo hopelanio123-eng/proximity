@@ -2,6 +2,17 @@ function run(password: string, websocket_port: number) {
     window.onload = () => { init(password, websocket_port) };
 }
 
+interface Config {
+    stylus_support?: boolean,
+    lefty?: boolean,
+    enable_mouse?: boolean,
+    enable_stylus?: boolean,
+    enable_touch?: boolean,
+    faster_capture?: boolean,
+    capture_cursor?: boolean,
+    capturable_id?: Number
+}
+
 class PEvent {
     event_type: string;
     pointer_id: number;
@@ -47,30 +58,22 @@ class PEvent {
 class PointerHandler {
     video: HTMLVideoElement;
     webSocket: WebSocket;
+    pointerTypes: string[];
 
-    constructor(video: HTMLVideoElement, webSocket: WebSocket) {
+    constructor(video: HTMLVideoElement, webSocket: WebSocket, config: Config) {
         this.video = video;
         this.webSocket = webSocket;
-        this.video.addEventListener("pointerdown", (e) => { this.onDown(e) }, false);
-        this.video.addEventListener("pointerup", (e) => { this.onUp(e) }, false);
-        this.video.addEventListener("pointercancel", (e) => { this.onCancel(e) }, false);
-        this.video.addEventListener("pointermove", (e) => { this.onMove(e) }, false);
+        this.pointerTypes = ['mouse', 'touch', 'pen'].filter((_, i) =>
+            [config.enable_mouse, config.enable_touch, config.enable_stylus][i]);
+        this.video.onpointerdown = (e) => { this.onEvent(e, "pointerdown") };
+        this.video.onpointerup = (e) => { this.onEvent(e, "pointerup") };
+        this.video.onpointercancel = (e) => { this.onEvent(e, "pointercancel") };
+        this.video.onpointermove = (e) => { this.onEvent(e, "pointermove") };
     }
 
-    onDown(event: PointerEvent) {
-        this.webSocket.send(JSON.stringify({ "PointerEvent": new PEvent("pointerdown", event, this.video) }));
-    }
-
-    onUp(event: PointerEvent) {
-        this.webSocket.send(JSON.stringify({ "PointerEvent": new PEvent("pointerup", event, this.video) }));
-    }
-
-    onCancel(event: PointerEvent) {
-        this.webSocket.send(JSON.stringify({ "PointerEvent": new PEvent("pointercancel", event, this.video) }));
-    }
-
-    onMove(event: PointerEvent) {
-        this.webSocket.send(JSON.stringify({ "PointerEvent": new PEvent("pointermove", event, this.video) }));
+    onEvent(event: PointerEvent, event_type: string) {
+        if (this.pointerTypes.includes(event.pointerType))
+            this.webSocket.send(JSON.stringify({ "PointerEvent": new PEvent(event_type, event, this.video) }));
     }
 }
 
@@ -142,6 +145,7 @@ function init(password: string, websocket_port: number) {
     // Settings elements
     let boolean_settings = [
         "stretch",
+        "lefty",
         "stylus_support",
         "enable_mouse",
         "enable_stylus",
@@ -152,7 +156,7 @@ function init(password: string, websocket_port: number) {
     let boolean_settings_els = Object.fromEntries(boolean_settings.map(s => [
         s, document.getElementById(s) as HTMLInputElement
     ]));
-    let get_settings = () => {
+    let get_settings = (): Config => {
         return Object.fromEntries(Object.entries(boolean_settings_els).map(
             ([name, element]) => [name, element.checked]));
     };
@@ -171,6 +175,20 @@ function init(password: string, websocket_port: number) {
                 send_settings();
             }
         }
+        if (saved_settings["lefty"])
+            settings.classList.add("lefty");
+    }
+
+    boolean_settings_els["lefty"].onchange = () => {
+        if (boolean_settings_els["lefty"].checked)
+            settings.classList.add("lefty");
+        else
+            settings.classList.remove("lefty");
+        save_settings();
+    }
+
+    document.getElementById("vanish").onclick = () => {
+        settings.classList.add("vanish");
     }
 
     let window_select = document.getElementById("window") as HTMLSelectElement;
@@ -202,7 +220,7 @@ function init(password: string, websocket_port: number) {
     webSocket.onclose = () => handle_disconnect("Connection closed.");
 
     let send_settings = () => {
-        let config = get_settings() as {string: any};
+        let config = get_settings();
         config["capturable_id"] = Number(window_select.value);
         webSocket.send(JSON.stringify({ "Config": config }));
     }
@@ -222,7 +240,7 @@ function init(password: string, websocket_port: number) {
     video.controls = false;
     video.onloadeddata = () => stretch_video();
     handle_messages(webSocket, video, () => {
-        new PointerHandler(video, webSocket);
+        new PointerHandler(video, webSocket, get_settings());
         webSocket.send('"GetFrame"');
     },
         (err) => alert(err),
