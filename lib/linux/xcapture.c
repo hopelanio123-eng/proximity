@@ -71,7 +71,8 @@ void* start_capture(Capturable* cap, CaptureContext* ctx, Error* err)
 	ctx->cap = *cap;
 	ctx->last_img_return = True;
 
-	strncpy(ctx->cap.name, cap->name, sizeof(ctx->cap.name));
+	if (&ctx->cap != cap)
+		strncpy(ctx->cap.name, cap->name, sizeof(ctx->cap.name));
 
 	int event_base, error_base;
 	ctx->has_xfixes = XFixesQueryExtension(cap->disp, &event_base, &error_base) == True;
@@ -117,6 +118,7 @@ void stop_capture(CaptureContext* ctx, Error* err)
 	{
 		fill_error(err, 1, "Failed to detach shared memory!");
 	}
+	shmctl(ctx->shminfo.shmid, IPC_RMID, NULL);
 	if (ctx->has_offscreen && ctx->cap.type == WINDOW && ctx->cap.c.winfo.is_regular_window)
 		XCompositeUnredirectWindow(ctx->cap.disp, ctx->cap.c.winfo.win, False);
 	free(ctx);
@@ -135,6 +137,7 @@ void capture_sceen(CaptureContext* ctx, struct Image* img, int capture_cursor, E
 		XShmDetach(ctx->cap.disp, &ctx->shminfo);
 		XDestroyImage(ctx->ximg);
 		shmdt(ctx->shminfo.shmaddr);
+		shmctl(ctx->shminfo.shmid, IPC_RMID, NULL);
 		CaptureContext* new_ctx = start_capture(&ctx->cap, ctx, err);
 		if (!new_ctx)
 		{
@@ -211,7 +214,6 @@ void capture_sceen(CaptureContext* ctx, struct Image* img, int capture_cursor, E
 			ERROR(err, 2, "XShmGetImage failed!");
 		}
 	}
-
 
 	// capture cursor if requested and if XFixes is available
 	if (capture_cursor && ctx->has_xfixes)
