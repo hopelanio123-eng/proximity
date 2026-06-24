@@ -16,6 +16,7 @@ class Settings {
 
         // Settings UI
         let settings = document.getElementById("settings");
+        settings.onclick = (e) => e.stopPropagation();
         let handle = document.getElementById("handle");
 
         // Settings elements
@@ -204,6 +205,15 @@ class PointerHandler {
     }
 }
 
+function frame_timer(webSocket: WebSocket) {
+    webSocket.send('"TryGetFrame"');
+    let upd_limit = settings.frame_update_limit();
+    if (upd_limit > 0)
+        setTimeout(() => frame_timer(webSocket), upd_limit);
+    else
+        requestAnimationFrame(() => frame_timer(webSocket));
+}
+
 function handle_messages(
     webSocket: WebSocket,
     video: HTMLVideoElement,
@@ -239,7 +249,6 @@ function handle_messages(
                         if (sourceBuffer.onerror)
                             sourceBuffer.onerror = () => settings.send_server_config();
                     })
-                    webSocket.send('"TryGetFrame"');
                 } else if (msg == "ConfigOk") {
                     onConfigOk();
                 }
@@ -261,11 +270,6 @@ function handle_messages(
         upd_buf();
         if (video.seekable.length > 0 && video.seekable.end(0) - video.currentTime > 0.01)
             video.currentTime = video.seekable.end(0)
-        let upd_limit = settings.frame_update_limit();
-        if (upd_limit > 0)
-            setTimeout(() => webSocket.send('"TryGetFrame"'), upd_limit);
-        else
-            requestAnimationFrame(() => webSocket.send('"TryGetFrame"'));
     }
 }
 
@@ -279,7 +283,7 @@ function init(password: string, websocket_port: number) {
     let video = document.getElementById("video") as HTMLVideoElement;
 
     let handle_disconnect = (msg: string) => {
-        video.onclick = () => {
+        document.body.onclick = video.onclick = () => {
             if (window.confirm(msg + " Reload page?"))
                 location.reload();
         }
@@ -291,7 +295,7 @@ function init(password: string, websocket_port: number) {
     video.onloadeddata = () => stretch_video();
     handle_messages(webSocket, video, () => {
         new PointerHandler(webSocket);
-        webSocket.send('"TryGetFrame"');
+        frame_timer(webSocket);
     },
         (err) => alert(err),
         (window_names) => settings.onCapturableList(window_names)
