@@ -7,20 +7,23 @@ class Settings {
     checks: Map<string, HTMLInputElement>;
     capturable_select: HTMLSelectElement;
     frame_update_limit_input: HTMLInputElement;
+    visible: boolean;
+    settings: HTMLElement;
 
     constructor(webSocket: WebSocket) {
         this.webSocket = webSocket;
         this.checks = new Map<string, HTMLInputElement>();
         this.capturable_select = document.getElementById("window") as HTMLSelectElement;
         this.frame_update_limit_input = document.getElementById("frame_update_limit") as HTMLInputElement;
+        this.visible = true;
 
         // Settings UI
-        let settings = document.getElementById("settings");
-        settings.onclick = (e) => e.stopPropagation();
+        this.settings = document.getElementById("settings");
+        this.settings.onclick = (e) => e.stopPropagation();
         let handle = document.getElementById("handle");
 
         // Settings elements
-        settings.querySelectorAll("input[type=checkbox]").forEach(
+        this.settings.querySelectorAll("input[type=checkbox]").forEach(
             (elem, _key, _parent) => this.checks.set(elem.id, elem as HTMLInputElement)
         );
 
@@ -29,17 +32,17 @@ class Settings {
         // event handling
 
         // client only
-        handle.onclick = () => settings.classList.toggle("hide");
+        handle.onclick = () => { this.toggle() };
         this.checks.get("lefty").onchange = (e) => {
             if ((e.target as HTMLInputElement).checked)
-                settings.classList.add("lefty");
+                this.settings.classList.add("lefty");
             else
-                settings.classList.remove("lefty");
+                this.settings.classList.remove("lefty");
             this.save_settings();
         }
 
         document.getElementById("vanish").onclick = () => {
-            settings.classList.add("vanish");
+            this.settings.classList.add("vanish");
         }
 
         this.checks.get("stretch").onchange = (e) => {
@@ -100,9 +103,8 @@ class Settings {
             this.capturable_select.disabled = !this.checks.get("faster_capture").checked;
             this.checks.get("capture_cursor").disabled = !this.checks.get("faster_capture").checked;
             this.frame_update_limit_input.value = settings["frame_update_limit"];
-            if (!this.checks.get("lefty").checked) {
-                let settings = document.getElementById("settings");
-                settings.classList.remove("lefty");
+            if (this.checks.get("lefty").checked) {
+                this.settings.classList.add("lefty");
             }
 
         } catch {
@@ -127,6 +129,11 @@ class Settings {
 
     frame_update_limit() {
         return this.frame_update_limit_input.valueAsNumber
+    }
+
+    toggle() {
+        this.settings.classList.toggle("hide");
+        this.visible = !this.visible;
     }
 
     onCapturableList(window_names: string[]) {
@@ -200,8 +207,12 @@ class PointerHandler {
     }
 
     onEvent(event: PointerEvent, event_type: string) {
-        if (this.pointerTypes.includes(event.pointerType))
+        if (this.pointerTypes.includes(event.pointerType)) {
             this.webSocket.send(JSON.stringify({ "PointerEvent": new PEvent(event_type, event, this.video) }));
+            if (settings.visible) {
+                settings.toggle();
+            }
+        }
     }
 }
 
