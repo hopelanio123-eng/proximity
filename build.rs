@@ -6,6 +6,12 @@ fn build_ffmpeg() {
         return;
     }
 
+    Command::new("bash")
+        .arg(Path::new("clean.sh"))
+        .current_dir("deps")
+        .status()
+        .expect("Failed to run clean ffmpeg build!");
+
     if !Command::new("bash")
         .arg(Path::new("build.sh"))
         .current_dir("deps")
@@ -52,10 +58,13 @@ fn main() {
     cc::Build::new().file("lib/error.c").compile("error");
 
     println!("cargo:rerun-if-changed=lib/encode_video.c");
-    cc::Build::new()
-        .file("lib/encode_video.c")
-        .include("deps/dist/include")
-        .compile("video");
+    let mut cc_video = cc::Build::new();
+    cc_video.file("lib/encode_video.c");
+    cc_video.include("deps/dist/include");
+    #[cfg(target_os = "linux")]
+    cc_video.define("HAS_NVENC", None);
+    cc_video.define("HAS_VAAPI", None);
+    cc_video.compile("video");
     println!("cargo:rustc-link-lib=static=avcodec");
     println!("cargo:rustc-link-lib=static=avdevice");
     println!("cargo:rustc-link-lib=static=avfilter");
@@ -88,4 +97,9 @@ fn linux() {
     println!("cargo:rustc-link-lib=Xfixes");
     println!("cargo:rustc-link-lib=Xcomposite");
     println!("cargo:rustc-link-lib=Xi");
+    println!("cargo:rustc-link-lib=static=va");
+    println!("cargo:rustc-link-lib=static=va-drm");
+    println!("cargo:rustc-link-lib=static=va-glx");
+    println!("cargo:rustc-link-lib=static=va-x11");
+    println!("cargo:rustc-link-lib=drm");
 }
