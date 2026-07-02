@@ -118,6 +118,12 @@ select {
 #displayoptions label {
     flex-grow: 1;
 }
+label input:disabled + span {
+    color: #888;
+}
+#frame_update_limit {
+    width: 3em;
+}
 #lefty {
     display: none;
 }
