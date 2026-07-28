@@ -20,7 +20,7 @@ tracing-subscriber = "^0.2"
 bitflags = "^1.2"
 image_autopilot = { package = "image", version = "0.22.5" }
 image = "^0.23"
-fltk = "^0.14"
+fltk = { version = "^0.14", features = ["no-pango"]}
 qrcode = "0.12.0"
 percent-encoding = "2.1.0"
 toml = "^0.5"
@@ -45,8 +45,13 @@ identifier = "io.github.h-m-h.weylus"
 [package.metadata.deb]
 name = "Weylus"
 depends = "$auto"
-section = "utility"
+section = "graphics"
 priority = "optional"
+assets = [
+    ["target/release/weylus", "usr/bin/weylus", "755"],
+    ["weylus.desktop", "usr/share/applications/weylus.desktop", "755"],
+    ["Readme.md", "usr/share/doc/weylus/README", "644"],
+]
 
 [profile.release]
 lto = true
