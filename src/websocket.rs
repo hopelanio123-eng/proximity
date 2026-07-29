@@ -25,6 +25,7 @@ use crate::cerror::CErrorCode;
 use crate::video::VideoEncoder;
 
 type WsWriter = Arc<Mutex<websocket::sender::Writer<std::net::TcpStream>>>;
+type WsClients = Arc<Mutex<HashMap<SocketAddr, Arc<Mutex<Writer<TcpStream>>>>>>;
 
 pub enum Ws2GuiMessage {
     UInputInaccessible,
@@ -74,7 +75,7 @@ pub fn run(
 
 fn listen_websocket(
     config: WsConfig,
-    clients: Arc<Mutex<HashMap<SocketAddr, Arc<Mutex<Writer<TcpStream>>>>>>,
+    clients: WsClients,
     shutdown: Arc<AtomicBool>,
     sender: mpsc::Sender<Ws2GuiMessage>,
 ) {
@@ -115,7 +116,7 @@ fn listen_websocket(
 
 fn handle_connection(
     request: WsUpgrade<TcpStream, Option<WsBuffer>>,
-    clients: Arc<Mutex<HashMap<SocketAddr, Arc<Mutex<Writer<TcpStream>>>>>>,
+    clients: WsClients,
     config: WsConfig,
     gui_sender: mpsc::Sender<Ws2GuiMessage>,
 ) {
@@ -264,7 +265,7 @@ fn handle_video(receiver: mpsc::Receiver<VideoCommands>, sender: WsWriter, confi
                 let screen_capture = screen_capture.as_ref().unwrap();
                 let (width_in, height_in) = screen_capture.size();
                 let scale =
-                    (max_width as f64 / width_in as f64).min(max_height as f64 / height_in as f64);
+                    (max_width as f64 / width_in as f64).max(max_height as f64 / height_in as f64);
                 let mut width_out = width_in;
                 let mut height_out = height_in;
                 if scale < 1.0 {
@@ -363,7 +364,6 @@ impl WsHandler {
         let (video_sender, video_receiver) = mpsc::channel::<VideoCommands>();
         {
             let sender = sender.clone();
-            let config = config.clone();
             // offload creating the videostream to another thread to avoid blocking the thread that
             // is receiving messages from the websocket
             spawn(move || handle_video(video_receiver, sender, config));

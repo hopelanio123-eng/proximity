@@ -1,3 +1,7 @@
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
@@ -11,12 +15,15 @@
 #include <libavutil/opt.h>
 
 #include <libswscale/swscale.h>
-#include <stdint.h>
-#include <stdlib.h>
 
 #include "error.h"
 #include "libavutil/buffer.h"
 #include "libavutil/error.h"
+
+#ifdef HAS_VAAPI
+#include <libavutil/hwcontext_vaapi.h>
+#include <va/va.h>
+#endif
 
 typedef struct VideoContext
 {
@@ -141,9 +148,28 @@ void open_video(VideoContext* ctx, Error* err)
 				Error err = {0};
 				set_hwframe_ctx(ctx, &err);
 
-				AVHWFramesConstraints* cst;
-				cst = av_hwdevice_get_hwframe_constraints(ctx->hw_device_ctx, NULL);
-				if (cst)
+				// Some drivers incorrectly report to support some pixel formats that actually are
+				// not supported. Using these formats leads to a crash and that's why the following
+				// workaround detects the drivers mentioned and if it finds them forces the pixel
+				// format to NV12 as this seems to work so far.
+				VADisplay dpy =
+					((AVVAAPIDeviceContext*)((AVHWDeviceContext*)ctx->hw_device_ctx->data)->hwctx)
+						->display;
+				const char* vendor_string = vaQueryVendorString(dpy);
+				// currently only some Radeon drivers seem to be affected, this list may need to be
+				// refined in the future
+				const char* drivers_force_nv12[] = {"Radeon", NULL};
+				int force_nv12 = 0;
+				for (const char** pattern = drivers_force_nv12; *pattern; pattern++)
+					if (strstr(vendor_string, *pattern) != NULL)
+					{
+						force_nv12 = 1;
+						break;
+					}
+
+				AVHWFramesConstraints* cst =
+					av_hwdevice_get_hwframe_constraints(ctx->hw_device_ctx, NULL);
+				if (!force_nv12 && cst)
 				{
 					// If bgr0 is supported choose it as this avoids the overhead of calling
 					// sws_scale otherwise choose the first supported format.
@@ -156,10 +182,12 @@ void open_video(VideoContext* ctx, Error* err)
 							break;
 						}
 					ctx->sw_pix_fmt = has_bgr0 ? AV_PIX_FMT_BGR0 : cst->valid_sw_formats[0];
-					av_hwframe_constraints_free(&cst);
 				}
 				else
 					ctx->sw_pix_fmt = AV_PIX_FMT_NV12;
+
+				if (cst)
+					av_hwframe_constraints_free(&cst);
 
 				if (err.code == 0 && avcodec_open2(ctx->c, codec, NULL) == 0)
 				{
@@ -392,7 +420,7 @@ void alloc_frame_buffer_hw(VideoContext* ctx, Error* err)
 void fill_bgra(VideoContext* ctx, const void* data, Error* err)
 {
 	if (ctx->frame->format == AV_PIX_FMT_BGR0 && ctx->width_in == ctx->width_out &&
-		ctx->height_in == ctx->width_out)
+		ctx->height_in == ctx->height_out)
 	{
 		if (ctx->frame_allocated)
 			dealloc_frame_buffer(ctx);
@@ -429,7 +457,7 @@ void fill_bgra(VideoContext* ctx, const void* data, Error* err)
 		av_frame_make_writable(ctx->frame_hw);
 		int ret = av_hwframe_transfer_data(ctx->frame_hw, ctx->frame, 0);
 		if (ret < 0)
-			ERROR(err, 1, "Could upload video frame to hardware: %s", av_err2str(ret));
+			ERROR(err, 1, "Could not upload video frame to hardware: %s", av_err2str(ret));
 	}
 }
 
@@ -456,6 +484,6 @@ void fill_rgb(VideoContext* ctx, const void* data, Error* err)
 		av_frame_make_writable(ctx->frame_hw);
 		int ret = av_hwframe_transfer_data(ctx->frame_hw, ctx->frame, 0);
 		if (ret < 0)
-			ERROR(err, 1, "Could upload video frame to hardware: %s", av_err2str(ret));
+			ERROR(err, 1, "Could not upload video frame to hardware: %s", av_err2str(ret));
 	}
 }
