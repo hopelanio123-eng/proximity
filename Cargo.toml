@@ -1,6 +1,6 @@
 [package]
 name = "weylus"
-version = "0.9.1"
+version = "0.10.0"
 authors = ["HMH <henry@freedesk.net>"]
 license = "AGPL-3.0-or-later"
 edition = "2018"
@@ -37,7 +37,7 @@ pnet = "^0.26"
 [features]
 bench = []
 ffmpeg-system = []
-va-dynamic = []
+va-static = []
 
 [package.metadata.bundle]
 name = "Weylus"
