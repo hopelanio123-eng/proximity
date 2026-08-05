@@ -187,7 +187,9 @@ class Settings {
     }
 
     onCapturableList(window_names: string[]) {
-        let current_selection = this.capturable_select.selectedOptions[0]?.textContent;
+        let current_selection = undefined;
+        if (this.capturable_select.selectedOptions[0])
+            current_selection = this.capturable_select.selectedOptions[0].textContent;
         let new_index;
         this.capturable_select.innerText = "";
         window_names.forEach((name, i) => {
@@ -372,7 +374,20 @@ function handle_messages(
     }
 }
 
+function check_apis() {
+    let apis = {
+        "MediaSource": "This browser doesn't support MSE required to playback video stream, try upgrading!",
+        "PointerEvent": "This browser doesn't support PointerEvents, input will not work, try upgrading!",
+    };
+    for (let n in apis) {
+        if (!(n in window)) {
+            log(LogLevel.ERROR, apis[n]);
+        }
+    }
+}
+
 function init(access_code: string, websocket_port: number) {
+    check_apis();
 
     let authed = false;
     let webSocket = new WebSocket("ws://" + window.location.hostname + ":" + websocket_port);
