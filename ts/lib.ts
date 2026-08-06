@@ -51,6 +51,7 @@ class Settings {
     checks: Map<string, HTMLInputElement>;
     capturable_select: HTMLSelectElement;
     frame_update_limit_input: HTMLInputElement;
+    frame_update_limit_output: HTMLOutputElement;
     visible: boolean;
     settings: HTMLElement;
 
@@ -59,6 +60,10 @@ class Settings {
         this.checks = new Map<string, HTMLInputElement>();
         this.capturable_select = document.getElementById("window") as HTMLSelectElement;
         this.frame_update_limit_input = document.getElementById("frame_update_limit") as HTMLInputElement;
+        this.frame_update_limit_output = this.frame_update_limit_input.nextElementSibling as HTMLOutputElement;
+        this.frame_update_limit_input.oninput = (e) => {
+            this.frame_update_limit_output.value = this.frame_update_limit_input.value;
+        }
         this.visible = true;
 
         // Settings UI
@@ -153,6 +158,7 @@ class Settings {
                 this.frame_update_limit_input.value = upd_limit;
             else
                 this.frame_update_limit_input.value = "0";
+            this.frame_update_limit_output.value = this.frame_update_limit_input.value;
             if (this.checks.get("lefty").checked) {
                 this.settings.classList.add("lefty");
             }
@@ -237,7 +243,14 @@ class PEvent {
         this.timestamp = Math.round(event.timeStamp * 1000);
         this.is_primary = event.isPrimary;
         this.pointer_type = event.pointerType;
-        this.button = event.button < 0 ? 0 : 1 << event.button;
+        let btn = event.button;
+        // for some reason the secondary and auxiliary buttons are ordered differently for
+        // the button and buttons properties
+        if (btn == 2)
+            btn = 1;
+        else if (btn == 1)
+            btn = 2;
+        this.button = (btn < 0 ? 0 : 1 << btn);
         this.buttons = event.buttons;
         this.x = (event.clientX - videoRect.left) / videoRect.width;
         this.y = (event.clientY - videoRect.top) / videoRect.height;
@@ -396,6 +409,12 @@ function init(access_code: string, websocket_port: number) {
     settings = new Settings(webSocket);
 
     let video = document.getElementById("video") as HTMLVideoElement;
+
+    video.oncontextmenu = function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+    };
 
     let handle_disconnect = (msg: string) => {
         document.body.onclick = video.onclick = (e) => {
