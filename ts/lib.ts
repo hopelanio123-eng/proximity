@@ -265,6 +265,33 @@ class PEvent {
     }
 }
 
+class WEvent {
+    dx: number;
+    dy: number;
+    timestamp: number;
+
+    constructor(event: WheelEvent) {
+        /* The WheelEvent can have different scrolling modes that affect how much scrolling
+         * should be done. Unfortunately there is not always a way to accurately convert the scroll
+         * distance into pixels. Thus the following is a guesstimate and scales the WheelEvent's
+         * deltaX/Y values accordingly.
+         */
+        let scale = 1;
+        switch (event.deltaMode) {
+            case 0x01: // DOM_DELTA_LINE
+                scale = 10;
+                break;
+            case 0x02: // DOM_DELTA_PAGE
+                scale = 1000;
+                break;
+            default: // DOM_DELTA_PIXEL
+        }
+        this.dx = Math.round(scale * event.deltaX);
+        this.dy = Math.round(scale * event.deltaY);
+        this.timestamp = Math.round(event.timeStamp * 1000);
+    }
+}
+
 class PointerHandler {
     video: HTMLVideoElement;
     webSocket: WebSocket;
@@ -318,12 +345,24 @@ class KeyboardHandler {
     constructor(webSocket: WebSocket) {
         this.webSocket = webSocket;
 
-        window.onkeydown = (e) => this.onEvent(e, "down")
-        window.onkeyup = (e) => this.onEvent(e, "up")
+        window.onkeydown = (e) => {
+            if (e.repeat)
+                return this.onEvent(e, "repeat");
+            return this.onEvent(e, "down");
+        };
+        window.onkeyup = (e) => { return this.onEvent(e, "up") };
+        window.onkeypress = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
     }
 
     onEvent(event: KeyboardEvent, event_type: string) {
         this.webSocket.send(JSON.stringify({ "KeyboardEvent": new KEvent(event_type, event) }));
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
     }
 }
 
@@ -470,6 +509,9 @@ function init(access_code: string, websocket_port: number) {
     video.controls = false;
     video.onloadeddata = () => stretch_video();
     handle_messages(webSocket, video, () => {
+        video.onwheel = (event) => {
+            webSocket.send(JSON.stringify({ "WheelEvent": new WEvent(event) }));
+        }
         new KeyboardHandler(webSocket);
         new PointerHandler(webSocket);
         frame_timer(webSocket);

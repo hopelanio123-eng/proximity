@@ -91,6 +91,22 @@ void init_mouse(int fd, const char* name, Error* err)
 		ERROR(err, 1, "error: ioctl UI_SET_EVBIT EV_KEY");
 	if (ioctl(fd, UI_SET_KEYBIT, BTN_LEFT) < 0)
 		ERROR(err, 1, "error: ioctl UI_SET_KEYBIT BTN_LEFT");
+	if (ioctl(fd, UI_SET_KEYBIT, BTN_RIGHT) < 0)
+		ERROR(err, 1, "error: ioctl UI_SET_KEYBIT BTN_RIGHT");
+	if (ioctl(fd, UI_SET_KEYBIT, BTN_MIDDLE) < 0)
+		ERROR(err, 1, "error: ioctl UI_SET_KEYBIT BTN_MIDDLE");
+
+	// enable scrolling
+	if (ioctl(fd, UI_SET_EVBIT, EV_REL) < 0)
+		ERROR(err, 1, "error: ioctl UI_SET_EVBIT EV_REL");
+	if (ioctl(fd, UI_SET_RELBIT, REL_WHEEL) < 0)
+		ERROR(err, 1, "error: ioctl UI_SET_RELBIT REL_WHEEL");
+	if (ioctl(fd, UI_SET_RELBIT, REL_HWHEEL) < 0)
+		ERROR(err, 1, "error: ioctl UI_SET_RELBIT REL_HWHEEL");
+	if (ioctl(fd, UI_SET_RELBIT, REL_WHEEL_HI_RES) < 0)
+		ERROR(err, 1, "error: ioctl UI_SET_RELBIT REL_WHEEL_HI_RES");
+	if (ioctl(fd, UI_SET_RELBIT, REL_HWHEEL_HI_RES) < 0)
+		ERROR(err, 1, "error: ioctl UI_SET_RELBIT REL_HWHEEL_HI_RES");
 
 	// setup sending timestamps
 	if (ioctl(fd, UI_SET_EVBIT, EV_MSC) < 0)

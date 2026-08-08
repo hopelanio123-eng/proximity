@@ -13,6 +13,7 @@ pub struct ClientConfiguration {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum MessageInbound {
     PointerEvent(PointerEvent),
+    WheelEvent(WheelEvent),
     KeyboardEvent(KeyboardEvent),
     // request a video frame from the server
     // like this the client can partially control the framerate by sending requests at some given
@@ -61,6 +62,8 @@ pub enum KeyboardEventType {
     DOWN,
     #[serde(rename = "up")]
     UP,
+    #[serde(rename = "repeat")]
+    REPEAT,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -78,7 +81,9 @@ fn location_from<'de, D: Deserializer<'de>>(deserializer: D) -> Result<KeyboardL
         1 => Ok(KeyboardLocation::LEFT),
         2 => Ok(KeyboardLocation::RIGHT),
         3 => Ok(KeyboardLocation::NUMPAD),
-        _ => Err(serde::de::Error::custom("Failed to parse keyboard location code.")),
+        _ => Err(serde::de::Error::custom(
+            "Failed to parse keyboard location code.",
+        )),
     }
 }
 
@@ -137,4 +142,11 @@ pub struct PointerEvent {
     pub twist: i32,
     pub width: f64,
     pub height: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct WheelEvent {
+    pub dx: i32,
+    pub dy: i32,
+    pub timestamp: u64,
 }

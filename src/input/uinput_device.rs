@@ -4,7 +4,7 @@ use std::os::raw::{c_char, c_int};
 use crate::input::device::InputDevice;
 use crate::protocol::{
     Button, KeyboardEvent, KeyboardEventType, KeyboardLocation, PointerEvent, PointerEventType,
-    PointerType,
+    PointerType, WheelEvent,
 };
 use crate::x11helper::{Capturable, X11Context};
 
@@ -165,7 +165,7 @@ impl Drop for UInputDevice {
 // Event Types
 const ET_SYNC: c_int = 0x00;
 const ET_KEY: c_int = 0x01;
-//const ET_RELATIVE: c_int = 0x02;
+const ET_RELATIVE: c_int = 0x02;
 const ET_ABSOLUTE: c_int = 0x03;
 const ET_MSC: c_int = 0x04;
 
@@ -185,6 +185,11 @@ const EC_KEY_TOOL_QUADTAP: c_int = 0x14f; /* Four fingers on trackpad */
 const EC_KEY_TOOL_QUINTTAP: c_int = 0x148; /* Five fingers on trackpad */
 //const EC_RELATIVE_X: c_int = 0x00;
 //const EC_RELATIVE_Y: c_int = 0x01;
+
+const EC_REL_HWHEEL: c_int = 0x06;
+const EC_REL_WHEEL: c_int = 0x08;
+const EC_REL_WHEEL_HI_RES: c_int = 0x0b;
+const EC_REL_HWHEEL_HI_RES: c_int = 0x0c;
 
 const EC_ABSOLUTE_X: c_int = 0x00;
 const EC_ABSOLUTE_Y: c_int = 0x01;
@@ -224,6 +229,46 @@ const ABS_MAX: f64 = 65535.0;
 const MAX_SCREEN_MAPPING_TRIES: usize = 100;
 
 impl InputDevice for UInputDevice {
+    fn send_wheel_event(&mut self, event: &WheelEvent) {
+        if let Err(err) = self.capture.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+
+        fn direction(d: i32) -> i32 {
+            if d == 0 {
+                0
+            } else if d < 0 {
+                -1
+            } else {
+                1
+            }
+        }
+
+        self.send(
+            self.mouse_fd,
+            ET_RELATIVE,
+            EC_REL_WHEEL,
+            direction(event.dy),
+        );
+        self.send(
+            self.mouse_fd,
+            ET_RELATIVE,
+            EC_REL_HWHEEL,
+            direction(event.dx),
+        );
+        self.send(self.mouse_fd, ET_RELATIVE, EC_REL_WHEEL_HI_RES, event.dy);
+        self.send(self.mouse_fd, ET_RELATIVE, EC_REL_HWHEEL_HI_RES, event.dx);
+
+        self.send(
+            self.mouse_fd,
+            ET_MSC,
+            EC_MSC_TIMESTAMP,
+            (event.timestamp % (i32::MAX as u64 + 1)) as i32,
+        );
+        self.send(self.mouse_fd, ET_SYNC, EC_SYNC_REPORT, 0);
+    }
+
     fn send_pointer_event(&mut self, event: &PointerEvent) {
         if let Err(err) = self.capture.before_input() {
             warn!("Failed to activate window, sending no input ({})", err);
@@ -387,6 +432,7 @@ impl InputDevice for UInputDevice {
                     if let Some(x11ctx) = &mut self.x11ctx {
                         x11ctx.map_input_device_to_entire_screen(&self.name_stylus_device, true);
                     }
+                    self.num_touch_mapping_tries += 1;
                 }
                 match event.event_type {
                     PointerEventType::DOWN | PointerEventType::MOVE => {
@@ -454,6 +500,7 @@ impl InputDevice for UInputDevice {
                     if let Some(x11ctx) = &mut self.x11ctx {
                         x11ctx.map_input_device_to_entire_screen(&self.name_mouse_device, false);
                     }
+                    self.num_touch_mapping_tries += 1;
                 }
                 match event.event_type {
                     PointerEventType::DOWN | PointerEventType::MOVE => {
@@ -507,6 +554,10 @@ impl InputDevice for UInputDevice {
     }
 
     fn send_keyboard_event(&mut self, event: &KeyboardEvent) {
+        if let Err(err) = self.capture.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
         use crate::input::uinput_keys::*;
         let key_code: c_int = match (event.code.as_str(), &event.location) {
             ("Escape", _) => KEY_ESC,
@@ -605,8 +656,9 @@ impl InputDevice for UInputDevice {
             _ => KEY_UNKNOWN,
         };
         let state: c_int = match event.event_type {
-            KeyboardEventType::DOWN => 1,
             KeyboardEventType::UP => 0,
+            KeyboardEventType::DOWN => 1,
+            KeyboardEventType::REPEAT => 2,
         };
 
         if event.ctrl {
@@ -619,6 +671,10 @@ impl InputDevice for UInputDevice {
         }
         if event.meta {
             self.send(self.keyboard_fd, ET_KEY, KEY_LEFTMETA, state);
+            self.send(self.keyboard_fd, ET_SYNC, EC_SYNC_REPORT, 0);
+        }
+        if event.shift {
+            self.send(self.keyboard_fd, ET_KEY, KEY_LEFTSHIFT, state);
             self.send(self.keyboard_fd, ET_SYNC, EC_SYNC_REPORT, 0);
         }
 
