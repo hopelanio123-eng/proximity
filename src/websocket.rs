@@ -312,10 +312,33 @@ fn handle_video(receiver: mpsc::Receiver<VideoCommands>, sender: WsWriter, confi
                 video_encoder.encode(pixel_data);
             }
             VideoCommands::Start(config) => {
-                recorder = Some(config.capturable.recorder(config.capture_cursor).unwrap());
-                max_width = config.max_width;
-                max_height = config.max_height;
-                send_msg(&sender, &MessageOutbound::ConfigOk);
+                #[allow(unused_assignments)]
+                {
+                    // gstpipewire can not handle setting a pipeline's state to Null after another
+                    // pipeline has been created and its state has been set to Play.
+                    // This line makes sure that there always is only a single recorder and thus
+                    // single pipeline in this thread by forcing rust to call the destructor of the
+                    // current pipeline here, right before creating a new pipeline.
+                    // See: https://gitlab.freedesktop.org/pipewire/pipewire/-/issues/986
+                    //
+                    // This shouldn't affect other Recorder trait objects.
+                    recorder = None;
+                }
+                match config.capturable.recorder(config.capture_cursor) {
+                    Ok(r) => {
+                        recorder = Some(r);
+                        max_width = config.max_width;
+                        max_height = config.max_height;
+                        send_msg(&sender, &MessageOutbound::ConfigOk);
+                    }
+                    Err(err) => {
+                        warn!("Failed to init screen cast: {}!", err);
+                        send_msg(
+                            &sender,
+                            &MessageOutbound::Error("Failed to init screen cast!".into()),
+                        )
+                    }
+                }
             }
         }
     }
