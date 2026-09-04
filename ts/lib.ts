@@ -651,6 +651,14 @@ function frame_timer(webSocket: WebSocket) {
     if (webSocket.readyState > webSocket.OPEN)
         return;
 
+    let t = performance.now();
+    if (t - last_fps_calc > 1500) {
+        let fps = Math.round(frame_count / (t - last_fps_calc) * 10000) / 10;
+        fps_out.value = fps.toString();
+        frame_count = 0;
+        last_fps_calc = t;
+    }
+
     if (document.hidden) {
         requestAnimationFrame(() => frame_timer(webSocket));
         return;
@@ -735,20 +743,18 @@ function handle_messages(
         queue.push(event.data);
         upd_buf();
         frame_count += 1;
-        let t = performance.now();
-        if (t - last_fps_calc > 1500) {
-            let fps = Math.round(frame_count / (t - last_fps_calc) * 10000) / 10;
-            fps_out.value = fps.toString();
-            frame_count = 0;
-            last_fps_calc = performance.now();
-        }
+
         // only seek if there is data available, some browsers choke otherwise
-        if (video.seekable.length > 0 && video.readyState >= (settings.check_aggressive_seek.checked ? 3 : 4)) {
+        if (video.seekable.length > 0) {
             let seek_time = video.seekable.end(video.seekable.length - 1);
-            if (isFinite(seek_time))
-                video.currentTime = seek_time;
-            else
-                log(LogLevel.WARN, "Failed to seek to end of video.")
+            if (video.readyState >= (settings.check_aggressive_seek.checked ? 3 : 4)
+                // but make sure to catch up if the video is more than 5 seconds behind
+                || seek_time - video.currentTime > 5) {
+                if (isFinite(seek_time))
+                    video.currentTime = seek_time;
+                else
+                    log(LogLevel.WARN, "Failed to seek to end of video.")
+            }
 
         }
     }
