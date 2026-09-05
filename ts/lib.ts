@@ -570,6 +570,12 @@ class PointerHandler {
             canvas.onpointermove = (e) => this.onEvent(e, "pointermove");
         }
 
+        // This is a workaround for the following Safari/WebKit bug:
+        // https://bugs.webkit.org/show_bug.cgi?id=217430
+        // I have no idea why this works but it does.
+        video.ontouchmove = (e) => e.preventDefault();
+        canvas.ontouchmove = (e) => e.preventDefault();
+
         for (let elem of [video, canvas]) {
             elem.onwheel = (e) => {
                 this.webSocket.send(JSON.stringify({ "WheelEvent": new WEvent(e) }));
@@ -748,8 +754,8 @@ function handle_messages(
         if (video.seekable.length > 0) {
             let seek_time = video.seekable.end(video.seekable.length - 1);
             if (video.readyState >= (settings.check_aggressive_seek.checked ? 3 : 4)
-                // but make sure to catch up if the video is more than 5 seconds behind
-                || seek_time - video.currentTime > 5) {
+                // but make sure to catch up if the video is more than 3 seconds behind
+                || seek_time - video.currentTime > 3) {
                 if (isFinite(seek_time))
                     video.currentTime = seek_time;
                 else
