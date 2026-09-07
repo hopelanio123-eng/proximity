@@ -69,6 +69,34 @@ function calc_max_video_resolution(scale: number) {
     ];
 }
 
+function fresh_canvas() {
+    let canvas_old = document.getElementById("canvas");
+    let canvas = document.createElement("canvas");
+    canvas.id = canvas_old.id;
+    canvas_old.classList.forEach((cls) => canvas.classList.add(cls));
+    canvas_old.replaceWith(canvas);
+    return canvas;
+}
+
+function toggle_energysaving(energysaving: boolean) {
+    let canvas = fresh_canvas();
+    if (energysaving) {
+        let ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    if (settings) {
+        if (energysaving) {
+            settings.checks.get("enable_video").checked = false;
+            settings.checks.get("enable_video").disabled = true;
+            settings.checks.get("enable_video").dispatchEvent(new Event("change"));
+        } else
+            settings.checks.get("enable_video").disabled = false;
+        new PointerHandler(settings.webSocket);
+    }
+}
+
 class Settings {
     webSocket: WebSocket;
     checks: Map<string, HTMLInputElement>;
@@ -146,10 +174,18 @@ class Settings {
             this.save_settings();
         }
 
-        let upd_pointer_filter = () => { this.save_settings(); new PointerHandler(this.webSocket); }
-        this.checks.get("enable_mouse").onchange = upd_pointer_filter;
-        this.checks.get("enable_stylus").onchange = upd_pointer_filter;
-        this.checks.get("enable_touch").onchange = upd_pointer_filter;
+        let upd_pointer = () => {
+            this.save_settings();
+            new PointerHandler(this.webSocket);
+        }
+        this.checks.get("enable_mouse").onchange = upd_pointer;
+        this.checks.get("enable_stylus").onchange = upd_pointer;
+        this.checks.get("enable_touch").onchange = upd_pointer;
+
+        this.checks.get("energysaving").onchange = (e) => {
+            this.save_settings();
+            toggle_energysaving((e.target as HTMLInputElement).checked);
+        };
 
         this.frame_update_limit_input.onchange = () => this.save_settings();
         this.range_min_pressure.onchange = () => this.save_settings();
@@ -223,9 +259,16 @@ class Settings {
                 this.settings.classList.add("lefty");
             }
 
-            if (!this.checks.get("enable_video").checked) {
+            if (!this.checks.get("enable_video").checked || this.checks.get("energysaving").checked) {
+                this.checks.get("enable_video").checked = false;
+                if (this.checks.get("energysaving").checked)
+                    this.checks.get("enable_video").disabled = true;
                 document.getElementById("video").classList.add("vanish");
                 document.getElementById("canvas").classList.remove("vanish");
+            }
+
+            if (this.checks.get("energysaving").checked) {
+                toggle_energysaving(true);
             }
 
         } catch {
@@ -557,8 +600,11 @@ class PointerHandler {
         video.onpointercancel = (e) => this.onEvent(e, "pointercancel");
         video.onpointermove = (e) => this.onEvent(e, "pointermove");
 
-        let painter = new Painter(canvas as HTMLCanvasElement);
-        if (painter.initialized) {
+        let painter: Painter;
+        if (!settings.checks.get("energysaving").checked)
+            painter = new Painter(canvas as HTMLCanvasElement);
+
+        if (painter && painter.initialized) {
             canvas.onpointerdown = (e) => { this.onEvent(e, "pointerdown"); painter.onstart(e); };
             canvas.onpointerup = (e) => { this.onEvent(e, "pointerup"); painter.onstop(e); };
             canvas.onpointercancel = (e) => { this.onEvent(e, "pointercancel"); painter.onstop(e); };
@@ -788,12 +834,29 @@ function init(access_code: string, websocket_port: number) {
     settings = new Settings(webSocket);
 
     let video = document.getElementById("video") as HTMLVideoElement;
+    let canvas = document.getElementById("canvas") as HTMLCanvasElement;
 
     video.oncontextmenu = function(event) {
         event.preventDefault();
         event.stopPropagation();
         return false;
     };
+
+    let toggle_fullscreen_btn = document.getElementById("fullscreen") as HTMLButtonElement;
+
+    if (document.exitFullscreen) {
+        toggle_fullscreen_btn.onclick = () => {
+            if (!document.fullscreenElement)
+                document.body.requestFullscreen({ navigationUI: "hide" });
+            else
+                document.exitFullscreen();
+        }
+    } else {
+        // if document.exitFullscreen is not present we are probably running on iOS/iPadOS.
+        // As input is broken in fullscreen mode on these, do not offer fullscreen in the first
+        // place.
+        toggle_fullscreen_btn.parentElement.removeChild(toggle_fullscreen_btn);
+    }
 
     let handle_disconnect = (msg: string) => {
         document.body.onclick = video.onclick = (e) => {
@@ -806,7 +869,6 @@ function init(access_code: string, websocket_port: number) {
     webSocket.onclose = () => handle_disconnect("Connection closed.");
     window.onresize = () => {
         stretch_video();
-        let canvas = document.getElementById("canvas") as HTMLCanvasElement;
         canvas.width = window.innerWidth * window.devicePixelRatio;
         canvas.height = window.innerHeight * window.devicePixelRatio;
         let [w, h] = calc_max_video_resolution(settings.scale_video_input.valueAsNumber);
