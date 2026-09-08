@@ -14,6 +14,7 @@ Weylus in action with [Xournal++](https://github.com/xournalpp/xournalpp):
 * [Running](#running)
     * [Fullscreen](#fullscreen)
     * [Keyboard Input](#keyboard-input)
+    * [Automation](#automation)
     * [Linux](#linux)
         * [Wayland](#wayland)
         * [Hardware Acceleration](#hardware-acceleration)
@@ -21,6 +22,7 @@ Weylus in action with [Xournal++](https://github.com/xournalpp/xournalpp):
             * [Intel GPU on Xorg with Intel drivers](#intel-gpu-on-xorg-with-intel-drivers)
             * [Dummy Plugs](#dummy-plugs)
             * [Other Options](#other-options)
+        * [Encryption](#encryption)
     * [macOS](#macos)
         * [Hardware Acceleration](#hardware-acceleration-1)
     * [Windows](#windows)
@@ -84,6 +86,13 @@ Weylus supports keyboard input for physical keyboards, so if you have a Bluetoot
 connect it to your tablet and start typing. Due to technical limitations onscreen keyboards are not
 supported.
 
+### Automation
+Weylus provides some features to make automation as convenient as possible. There is a command-line
+interface; `--no-gui` for example starts Weylus in headless mode without a gui. For more options see
+`weylus --help`. If you want to run a specific script e.g., once a client connects to your computer
+you can do so by parsing the log Weylus generates. Set the environment variable `WEYLUS_LOG_JSON` to
+`true` to enable easily parseable JSON logging.
+
 ### Linux
 Weylus uses the `uinput` interface to simulate input events on Linux. **To enable stylus and
 multi-touch support `/dev/uinput` needs to be writable by Weylus.** To make `/dev/uinput`
@@ -134,9 +143,11 @@ environment variable `LIBVA_DRIVER_NAME`. You can find possible values with the 
 not reside in `/usr/lib/dri` but for example in `/usr/lib/x86_64-linux-gnu/dri` and may not be found
 by Weylus. To force Weylus to search another directory for drivers, the environment variable
 `LIBVA_DRIVERS_PATH` can be set.
-Additionally you can specify the VAAPI
-device to use by setting `WEYLUS_VAAPI_DEVICE`; by default devices can be found in `/dev/dri`. Note
-that you may need to install the driver(s) first.
+Additionally you can specify the VAAPI device to use by setting `WEYLUS_VAAPI_DEVICE`; by default
+devices can be found in `/dev/dri`. On some systems this is not optional and this variable must be
+set. If VAAPI doesn't work out of the box for you, have a look into `/dev/dri`, often setting
+`WEYLUS_VAAPI_DEVICE=/dev/dri/renderD129` is already the solution. Note that you may need to install
+the driver(s) first.
 
 Nvidias NVENC is very fast but delivers a video stream of noticeably lower quality (at least on my
 GeForce GTX 1050 Mobile GPU) but more recent GPUs should provide higher quality. For this to work
@@ -209,6 +220,26 @@ expand documentation on this!
   to actually do that: https://github.com/swaywm/sway/issues/5553
 - On Wayland with GNOME recently there has been added an option to [create virtual monitors with
   mutter](https://gitlab.gnome.org/GNOME/mutter/-/merge_requests/1698)
+
+#### Encryption
+By default Weylus comes without encryption and should only be run on networks you trust. If this is
+not the case it's strongly advised to set up a TLS proxy. One option is to use
+[hitch](https://hitch-tls.org/), an example script that sets up encryption is located at
+`weylus_tls.sh`.
+But any TLS proxy should work just fine.
+
+Note that the mentioned script works by creating a self-signed certificate. This means your browser
+will most likely display a scary looking but completely unfounded message telling you how incredibly
+dangerous it is to trust the certificate you yourself just created; this can be safely ignored!
+
+In case you are using Firefox: There is a [bug](https://bugzilla.mozilla.org/show_bug.cgi?id=1187666)
+that prevents users from accepting self-signed certificates for websocket connections. A workaround
+is to directly open the websocket connection via the URL bar and accept the certificate there. After
+accepting the connection will of course fail as the browser expects https and not wss as protocol.
+
+Sadly this solution is anything but frictionless and I am unhappy with the current state of affairs.
+This is also another reason why encryption is not enabled by default, self-signed certificates are
+just too painful to handle nowadays. I'd gladly welcome any proposals to improve the situation!
 
 ### macOS
 Weylus needs some permissions to work properly, make sure you enable:
