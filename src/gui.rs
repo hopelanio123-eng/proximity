@@ -31,6 +31,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_size(660, 620)
         .center_screen()
         .with_label(&format!("Weylus - {}", env!("CARGO_PKG_VERSION")));
+    wind.set_xclass("weylus");
 
     let mut input_access_code = Input::default()
         .with_pos(130, 30)
@@ -228,6 +229,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                                 .with_size(w, h)
                                 .center_screen()
                                 .with_label("Weylus - UInput inaccessible!");
+                            pop_up.set_xclass("weylus");
 
                             let buf = TextBuffer::default();
                             let mut pop_up_text = TextDisplay::default().with_size(w, h);
@@ -287,14 +289,14 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                 {
                     use image::Luma;
                     use qrcode::QrCode;
-                    let addr_string = format!("http://{}", web_sock.to_string());
+                    let addr_string = format!("http://{}", web_sock);
                     output_server_addr.set_value(&addr_string);
                     let mut url_string = addr_string;
                     if let Some(access_code) = &config.access_code {
                         url_string.push_str("?access_code=");
                         url_string.push_str(
                             &percent_encoding::utf8_percent_encode(
-                                &access_code,
+                                access_code,
                                 percent_encoding::NON_ALPHANUMERIC,
                             )
                             .to_string(),
