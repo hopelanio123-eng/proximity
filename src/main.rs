@@ -5,7 +5,10 @@ extern crate test;
 #[macro_use]
 extern crate bitflags;
 
-use tracing::{error, warn};
+#[cfg(unix)]
+use signal_hook::iterator::Signals;
+use signal_hook::{consts::TERM_SIGNALS, low_level::signal_name};
+use tracing::{error, info, warn};
 
 use std::sync::mpsc;
 
@@ -67,9 +70,7 @@ fn main() {
         }
     }
 
-    if !conf.no_gui {
-        gui::run(&conf, receiver);
-    } else {
+    if conf.no_gui {
         let mut weylus = crate::weylus::Weylus::new();
         weylus.start(
             &conf,
@@ -80,7 +81,36 @@ fn main() {
                 }
             },
         );
-        weylus.wait();
+        #[cfg(unix)]
+        {
+            let mut signals = Signals::new(TERM_SIGNALS).unwrap();
+            for sig in signals.forever() {
+                info!(
+                    "Shutting down after receiving signal {signame} ({sig})...",
+                    signame = signal_name(sig).unwrap_or("UNKNOWN SIGNAL")
+                );
+                std::thread::spawn(move || {
+                    for sig in signals.forever() {
+                        warn!(
+                            "Received second signal {signame} ({sig}) while shutting down \
+                            gracefully, proceeding with forceful shutdown...",
+                            signame = signal_name(sig).unwrap_or("UNKNOWN SIGNAL")
+                        );
+                        std::process::exit(1);
+                    }
+                });
+                weylus.stop();
+                break;
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            loop {
+                std::thread::park();
+            }
+        }
+    } else {
+        gui::run(&conf, receiver);
     }
 }
 
