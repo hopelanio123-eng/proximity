@@ -9,7 +9,6 @@ pub struct ClientConfiguration {
     pub max_width: usize,
     pub max_height: usize,
     pub client_name: Option<String>,
-    pub frame_rate: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -17,6 +16,10 @@ pub enum MessageInbound {
     PointerEvent(PointerEvent),
     WheelEvent(WheelEvent),
     KeyboardEvent(KeyboardEvent),
+    // request a video frame from the server
+    // like this the client can partially control the framerate by sending requests at some given
+    // rate. However, the server may drop a request if encoding is too slow.
+    TryGetFrame,
     GetCapturableList,
     Config(ClientConfiguration),
 }
@@ -86,7 +89,7 @@ fn location_from<'de, D: Deserializer<'de>>(deserializer: D) -> Result<KeyboardL
 }
 
 bitflags! {
-    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy)]
+    #[derive(Serialize, Deserialize)]
     pub struct Button: u8 {
         const NONE = 0b0000_0000;
         const PRIMARY = 0b0000_0001;
@@ -147,17 +150,4 @@ pub struct WheelEvent {
     pub dx: i32,
     pub dy: i32,
     pub timestamp: u64,
-}
-
-pub trait WeylusSender {
-    type Error: std::error::Error;
-    fn send_message(&mut self, message: MessageOutbound) -> Result<(), Self::Error>;
-    fn send_video(&mut self, bytes: &[u8]) -> Result<(), Self::Error>;
-}
-
-pub trait WeylusReceiver: Iterator<Item = Result<MessageInbound, Self::Error>> {
-    type Error: std::error::Error;
-    fn recv_message(&mut self) -> Option<Result<MessageInbound, Self::Error>> {
-        self.next()
-    }
 }
