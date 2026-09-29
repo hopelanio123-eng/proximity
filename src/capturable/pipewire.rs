@@ -91,7 +91,7 @@ impl Capturable for PipeWireCapturable {
         let type_str = match self.source_type {
             1 => "Desktop",
             2 => "Window",
-            _ => "Unknown",
+            _ => "Unknow",
         };
         format!("Pipewire {}, path: {}", type_str, self.path)
     }
@@ -104,7 +104,7 @@ impl Capturable for PipeWireCapturable {
         Ok(())
     }
 
-    fn recorder(&self, _capture_cursor: bool) -> Result<Box<dyn Recorder>, Box<dyn Error>> {
+    fn recorder(&self, capture_cursor: bool) -> Result<Box<dyn Recorder>, Box<dyn Error>> {
         Ok(Box::new(PipeWireRecorder::new(self.clone())?))
     }
 }
@@ -112,7 +112,6 @@ impl Capturable for PipeWireCapturable {
 pub struct PipeWireRecorder {
     buffer: Option<gst::MappedBuffer<gst::buffer::Readable>>,
     buffer_cropped: Vec<u8>,
-    pix_fmt: String,
     is_cropped: bool,
     pipeline: gst::Pipeline,
     appsink: AppSink,
@@ -125,39 +124,32 @@ impl PipeWireRecorder {
         let pipeline = gst::Pipeline::new(None);
 
         let src = gst::ElementFactory::make("pipewiresrc", None)?;
-        src.set_property("fd", &capturable.fd.as_raw_fd());
-        src.set_property("path", &format!("{}", capturable.path));
+        src.set_property("fd", &capturable.fd.as_raw_fd())?;
+        src.set_property("path", &format!("{}", capturable.path))?;
 
         // For some reason pipewire blocks on destruction of AppSink if this is not set to true,
         // see: https://gitlab.freedesktop.org/pipewire/pipewire/-/issues/982
-        src.set_property("always-copy", &true);
+        src.set_property("always-copy", &true)?;
 
         let sink = gst::ElementFactory::make("appsink", None)?;
-        sink.set_property("drop", &true);
-        sink.set_property("max-buffers", &1u32);
+        sink.set_property("drop", &true)?;
+        sink.set_property("max-buffers", &1u32)?;
 
         pipeline.add_many(&[&src, &sink])?;
         src.link(&sink)?;
         let appsink = sink
             .dynamic_cast::<AppSink>()
             .map_err(|_| GStreamerError("Sink element is expected to be an appsink!".into()))?;
-        let mut caps = gst::Caps::new_empty();
-        caps.merge_structure(gst::structure::Structure::new(
+        appsink.set_caps(Some(&gst::Caps::new_simple(
             "video/x-raw",
             &[("format", &"BGRx")],
-        ));
-        caps.merge_structure(gst::structure::Structure::new(
-            "video/x-raw",
-            &[("format", &"RGBx")],
-        ));
-        appsink.set_caps(Some(&caps));
+        )));
 
         pipeline.set_state(gst::State::Playing)?;
         Ok(Self {
             pipeline,
             appsink,
             buffer: None,
-            pix_fmt: "".into(),
             width: 0,
             height: 0,
             buffer_cropped: vec![],
@@ -172,18 +164,17 @@ impl Recorder for PipeWireRecorder {
             .appsink
             .try_pull_sample(gst::ClockTime::from_mseconds(33))
         {
-            let cap = sample.caps().unwrap().structure(0).unwrap();
-            let w: i32 = cap.value("width")?.get()?;
-            let h: i32 = cap.value("height")?.get()?;
-            self.pix_fmt = cap.value("format")?.get()?;
+            let cap = sample.get_caps().unwrap().get_structure(0).unwrap();
+            let w: i32 = cap.get_value("width")?.get_some()?;
+            let h: i32 = cap.get_value("height")?.get_some()?;
             let w = w as usize;
             let h = h as usize;
             let buf = sample
-                .buffer_owned()
+                .get_buffer_owned()
                 .ok_or_else(|| GStreamerError("Failed to get owned buffer.".into()))?;
             let mut crop = buf
-                .meta::<gstreamer_video::VideoCropMeta>()
-                .map(|m| m.rect());
+                .get_meta::<gstreamer_video::VideoCropMeta>()
+                .map(|m| m.get_rect());
             // only crop if necessary
             if Some((0, 0, w as u32, h as u32)) == crop {
                 crop = None;
@@ -191,7 +182,7 @@ impl Recorder for PipeWireRecorder {
             let buf = buf
                 .into_mapped_buffer_readable()
                 .map_err(|_| GStreamerError("Failed to map buffer.".into()))?;
-            let buf_size = buf.size();
+            let buf_size = buf.get_size();
             // BGRx is 4 bytes per pixel
             if buf_size != (w * h * 4) {
                 // for some reason the width and height of the caps do not guarantee correct buffer
@@ -235,16 +226,15 @@ impl Recorder for PipeWireRecorder {
         if self.buffer.is_none() {
             return Err(Box::new(GStreamerError("No buffer available!".into())));
         }
-        let buf = if self.is_cropped {
-            self.buffer_cropped.as_slice()
-        } else {
-            self.buffer.as_ref().unwrap().as_slice()
-        };
-        match self.pix_fmt.as_str() {
-            "BGRx" => Ok(PixelProvider::BGR0(self.width, self.height, buf)),
-            "RGBx" => Ok(PixelProvider::RGB0(self.width, self.height, buf)),
-            _ => unreachable!(),
-        }
+        Ok(PixelProvider::BGR0(
+            self.width,
+            self.height,
+            if self.is_cropped {
+                self.buffer_cropped.as_slice()
+            } else {
+                self.buffer.as_ref().unwrap().as_slice()
+            },
+        ))
     }
 }
 
@@ -337,9 +327,7 @@ fn streams_from_response(response: OrgFreedesktopPortalRequestResponse) -> Vec<P
                         .collect::<HashMap<String, &dyn RefArg>>();
                     Some(PwStreamInfo {
                         path,
-                        source_type: attributes
-                            .get("source_type")
-                            .map_or(Some(0), |v| v.as_u64())?,
+                        source_type: attributes.get("source_type").map_or(Some(0), |v| v.as_u64())?,
                     })
                 })
                 .collect::<Vec<PwStreamInfo>>(),
@@ -427,6 +415,7 @@ fn request_screen_cast(
                     let session = session.clone();
                     let fd = fd.clone();
                     let streams = streams.clone();
+                    let failure = failure.clone();
                     let failure_out = failure.clone();
                     handle_response(
                         c,

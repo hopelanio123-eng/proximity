@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpStream};
-use std::sync::mpsc::{SendError, TryRecvError};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::mpsc::SendError;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc, Arc, Mutex,
+};
 use std::thread::spawn;
 use tracing::{debug, error, info, warn};
 
@@ -19,8 +22,8 @@ use crate::protocol::{
 use crate::cerror::CErrorCode;
 use crate::video::{EncoderOptions, VideoEncoder};
 
-type WsWriter = Arc<Mutex<Writer<TcpStream>>>;
-type WsClients = Arc<Mutex<HashMap<SocketAddr, WsWriter>>>;
+type WsWriter = Arc<Mutex<websocket::sender::Writer<std::net::TcpStream>>>;
+type WsClients = Arc<Mutex<HashMap<SocketAddr, Arc<Mutex<Writer<TcpStream>>>>>>;
 
 pub enum Ws2UiMessage {
     Start,
@@ -52,57 +55,73 @@ pub fn run(
     receiver: mpsc::Receiver<Ui2WsMessage>,
     config: WsConfig,
 ) -> std::thread::JoinHandle<()> {
-    spawn(move || {
-        let clients: WsClients = Arc::new(Mutex::new(HashMap::new()));
+    let clients = Arc::new(Mutex::new(HashMap::<
+        SocketAddr,
+        Arc<Mutex<Writer<TcpStream>>>,
+    >::new()));
+    let clients2 = clients.clone();
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown2 = shutdown.clone();
 
-        let mut server = match Server::bind(config.address) {
-            Ok(s) => s,
-            Err(e) => {
-                log_send_error(sender.send(Ws2UiMessage::Error(format!(
-                    "Failed binding to socket: {}",
-                    e
-                ))));
-                return;
+    spawn(move || match receiver.recv() {
+        Err(_) | Ok(Ui2WsMessage::Shutdown) => {
+            let clients = clients.lock().unwrap();
+            for client in clients.values() {
+                let client = client.lock().unwrap();
+                if let Err(err) = client.shutdown_all() {
+                    error!("Could not shutdown websocket client: {}", err);
+                }
             }
-        };
-
-        if let Err(err) = server.set_nonblocking(true) {
-            warn!(
-                "Could not set websocket to non-blocking, graceful shutdown may be impossible now: {}",
-                err
-            );
+            shutdown.store(true, Ordering::Relaxed);
         }
+    });
+    spawn(move || listen_websocket(config, clients2, shutdown2, sender))
+}
 
-        log_send_error(sender.send(Ws2UiMessage::Start));
+fn listen_websocket(
+    config: WsConfig,
+    clients: WsClients,
+    shutdown: Arc<AtomicBool>,
+    sender: mpsc::Sender<Ws2UiMessage>,
+) {
+    let server = Server::bind(config.address);
+    if let Err(err) = server {
+        log_send_error(sender.send(Ws2UiMessage::Error(format!(
+            "Failed binding to socket: {}",
+            err
+        ))));
+        return;
+    }
+    let mut server = server.unwrap();
+    if let Err(err) = server.set_nonblocking(true) {
+        warn!(
+            "Could not set websocket to non-blocking, graceful shutdown may be impossible now: {}",
+            err
+        );
+    }
 
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(10));
+    log_send_error(sender.send(Ws2UiMessage::Start));
 
-            match receiver.try_recv() {
-                Err(TryRecvError::Disconnected) | Ok(Ui2WsMessage::Shutdown) => {
-                    let clients = clients.lock().unwrap();
-                    for client in clients.values() {
-                        let client = client.lock().unwrap();
-                        if let Err(err) = client.shutdown_all() {
-                            error!("Could not shutdown websocket client: {}", err);
-                        }
-                    }
-                    info!("Shutting down websocket: {}", config.address);
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        if shutdown.load(Ordering::Relaxed) {
+            info!("Shutting down websocket: {}", config.address);
+            return;
+        }
+        match server.accept() {
+            Ok(request) => {
+                let clients = clients.clone();
+                let config = config.clone();
+                let sender = sender.clone();
+                spawn(move || handle_connection(request, clients, config, sender));
+            }
+            Err(_) => {
+                if shutdown.load(Ordering::Relaxed) {
                     return;
                 }
-                _ => {}
             }
-            match server.accept() {
-                Ok(request) => {
-                    let clients = clients.clone();
-                    let config = config.clone();
-                    let sender = sender.clone();
-                    spawn(move || handle_connection(request, clients, config, sender));
-                }
-                _ => {}
-            };
-        }
-    })
+        };
+    }
 }
 
 fn handle_connection(
@@ -111,33 +130,27 @@ fn handle_connection(
     config: WsConfig,
     gui_sender: mpsc::Sender<Ws2UiMessage>,
 ) {
-    let client = match request.accept() {
-        Ok(c) => c,
-        Err((_, err)) => {
-            warn!("Failed to accept client: {}", err);
-            return;
-        }
-    };
-
+    let client = request.accept();
+    if let Err((_, err)) = client {
+        warn!("Failed to accept client: {}", err);
+        return;
+    }
+    let client = client.unwrap();
     if let Err(err) = client.set_nonblocking(false) {
         warn!("Failed to set client to blocking mode: {}", err);
     }
-
-    let peer_addr = match client.peer_addr() {
-        Ok(p) => p,
-        Err(err) => {
-            warn!("Failed to retrieve client address: {}", err);
-            return;
-        }
-    };
-
-    let (mut ws_receiver, ws_sender) = match client.split() {
-        Ok(s) => s,
-        Err(err) => {
-            warn!("Failed to setup connection: {}", err);
-            return;
-        }
-    };
+    let peer_addr = client.peer_addr();
+    if let Err(err) = peer_addr {
+        warn!("Failed to retrieve client address: {}", err);
+        return;
+    }
+    let peer_addr = peer_addr.unwrap();
+    let client = client.split();
+    if let Err(err) = client {
+        warn!("Failed to setup connection: {}", err);
+        return;
+    }
+    let (mut ws_receiver, ws_sender) = client.unwrap();
 
     let ws_sender = Arc::new(Mutex::new(ws_sender));
 
@@ -225,11 +238,13 @@ fn handle_video(receiver: mpsc::Receiver<VideoCommands>, sender: WsWriter, confi
     let mut max_height = 1080;
 
     loop {
+        let msg = receiver.recv();
+
         // stop thread once the channel is closed
-        let mut msg = match receiver.recv() {
-            Ok(m) => m,
-            Err(_) => return,
-        };
+        if msg.is_err() {
+            return;
+        }
+        let mut msg = msg.unwrap();
 
         // drop frames if the client is requesting frames at a higher rate than they can be
         // produced here
@@ -303,13 +318,11 @@ fn handle_video(receiver: mpsc::Receiver<VideoCommands>, sender: WsWriter, confi
                         },
                         config.encoder_options,
                     );
-                    match res {
-                        Ok(r) => video_encoder = Some(r),
-                        Err(e) => {
-                            warn!("{}", e);
-                            continue;
-                        }
-                    };
+                    if let Err(err) = res {
+                        warn!("{}", err);
+                        continue;
+                    }
+                    video_encoder = Some(res.unwrap());
                 }
                 let video_encoder = video_encoder.as_mut().unwrap();
                 video_encoder.encode(pixel_data);
@@ -403,9 +416,10 @@ impl WsHandler {
     }
 
     fn process_wheel_event(&mut self, event: &WheelEvent) {
-        match &mut self.input_device {
-            Some(i) => i.send_wheel_event(event),
-            None => warn!("Input device is not initalized, can not process WheelEvent!"),
+        if self.input_device.is_some() {
+            self.input_device.as_mut().unwrap().send_wheel_event(&event)
+        } else {
+            warn!("Input device is not initalized, can not process WheelEvent!");
         }
     }
 
@@ -414,7 +428,7 @@ impl WsHandler {
             self.input_device
                 .as_mut()
                 .unwrap()
-                .send_pointer_event(event)
+                .send_pointer_event(&event)
         } else {
             warn!("Input device is not initalized, can not process PointerEvent!");
         }
@@ -425,7 +439,7 @@ impl WsHandler {
             self.input_device
                 .as_mut()
                 .unwrap()
-                .send_keyboard_event(event)
+                .send_keyboard_event(&event)
         } else {
             warn!("Input device is not initalized, can not process KeyboardEvent!");
         }
@@ -469,23 +483,20 @@ impl WsHandler {
                         capturable.clone(),
                         &self.client_name,
                     );
-                    match device {
-                        Ok(d) => self.input_device = Some(Box::new(d)),
-                        Err(e) => {
-                            error!("Failed to create uinput device: {}", e);
-                            if let CErrorCode::UInputNotAccessible = e.to_enum() {
-                                if let Err(err) =
-                                    self.gui_sender.send(Ws2UiMessage::UInputInaccessible)
-                                {
-                                    warn!("Failed to send message to gui thread: {}!", err);
-                                }
+                    if let Err(err) = device {
+                        error!("Failed to create uinput device: {}", err);
+                        if let CErrorCode::UInputNotAccessible = err.to_enum() {
+                            if let Err(err) = self.gui_sender.send(Ws2UiMessage::UInputInaccessible)
+                            {
+                                warn!("Failed to send message to gui thread: {}!", err);
                             }
-                            self.send_msg(&MessageOutbound::ConfigError(
-                                "Failed to create uinput device!".to_string(),
-                            ));
-                            return;
                         }
+                        self.send_msg(&MessageOutbound::ConfigError(
+                            "Failed to create uinput device!".to_string(),
+                        ));
+                        return;
                     }
+                    self.input_device = Some(Box::new(device.unwrap()))
                 } else if let Some(d) = self.input_device.as_mut() {
                     d.set_capturable(capturable.clone());
                 }
@@ -529,7 +540,7 @@ impl WsHandler {
     fn process(&mut self, message: &OwnedMessage) {
         match message {
             OwnedMessage::Text(s) => {
-                let message: Result<MessageInbound, _> = serde_json::from_str(s);
+                let message: Result<MessageInbound, _> = serde_json::from_str(&s);
                 match message {
                     Ok(message) => {
                         if let MessageInbound::TryGetFrame = message {

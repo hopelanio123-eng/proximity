@@ -74,10 +74,8 @@ impl UInputDevice {
         let name_touch_c_str = CString::new(name_touch.as_bytes()).unwrap();
         let touch_fd = unsafe { init_uinput_touch(name_touch_c_str.as_ptr(), &mut err) };
         if err.is_err() {
-            unsafe {
-                destroy_uinput_device(stylus_fd);
-                destroy_uinput_device(mouse_fd);
-            }
+            unsafe { destroy_uinput_device(stylus_fd) };
+            unsafe { destroy_uinput_device(mouse_fd) };
             return Err(err);
         }
 
@@ -85,15 +83,13 @@ impl UInputDevice {
         let name_keyboard_c_str = CString::new(name_keyboard.as_bytes()).unwrap();
         let keyboard_fd = unsafe { init_uinput_keyboard(name_keyboard_c_str.as_ptr(), &mut err) };
         if err.is_err() {
-            unsafe {
-                destroy_uinput_device(stylus_fd);
-                destroy_uinput_device(mouse_fd);
-                destroy_uinput_device(touch_fd);
-            }
+            unsafe { destroy_uinput_device(stylus_fd) };
+            unsafe { destroy_uinput_device(mouse_fd) };
+            unsafe { destroy_uinput_device(touch_fd) };
             return Err(err);
         }
 
-        Ok(Self {
+        let tblt = Self {
             keyboard_fd,
             stylus_fd,
             mouse_fd,
@@ -112,7 +108,8 @@ impl UInputDevice {
             num_stylus_mapping_tries: 0,
             num_touch_mapping_tries: 0,
             x11ctx: X11Context::new(),
-        })
+        };
+        Ok(tblt)
     }
 
     fn transform_x(&self, x: f64) -> i32 {
@@ -281,13 +278,12 @@ impl InputDevice for UInputDevice {
             warn!("Failed to activate window, sending no input ({})", err);
             return;
         }
-        let (x, y, width, height) = match self.capturable.geometry_relative() {
-            Ok(g) => g,
-            Err(e) => {
-                warn!("Failed to get window geometry, sending no input ({})", e);
-                return;
-            }
-        };
+        let geometry = self.capturable.geometry_relative();
+        if let Err(err) = geometry {
+            warn!("Failed to get window geometry, sending no input ({})", err);
+            return;
+        }
+        let (x, y, width, height) = geometry.unwrap();
         self.x = x;
         self.y = y;
         self.width = width;

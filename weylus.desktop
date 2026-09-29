@@ -7,4 +7,3 @@ Exec=weylus
 Terminal=false
 Icon=input-tablet
 Categories=Office;Graphics;Education;Presentation;
-StartupWMClass=weylus

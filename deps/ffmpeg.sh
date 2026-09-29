@@ -3,8 +3,8 @@
 set -ex
 
 cd ffmpeg
-PKG_CONFIG_PATH="$DIST/lib/pkgconfig" ./configure \
-	--prefix="$DIST" \
+PKG_CONFIG_PATH="../dist/lib/pkgconfig" ./configure \
+	--prefix=../dist \
 	--disable-debug \
 	--enable-static \
 	--disable-shared \

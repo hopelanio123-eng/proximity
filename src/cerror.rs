@@ -2,7 +2,7 @@ use std::error::Error;
 use std::ffi::CStr;
 use std::fmt;
 
-use std::os::raw::{c_char, c_int};
+use std::os::raw::{c_int, c_char};
 
 #[repr(C)]
 pub struct CError {
