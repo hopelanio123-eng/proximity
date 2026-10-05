@@ -34,14 +34,20 @@ where
         Box::new(self.clone())
     }
 }
+/// Relative: x, y, width, height of the Capturable as floats relative to the absolute size of the
+/// screen. For example x=0.5, y=0.0, width=0.5, height=1.0 means the right half of the screen.
+/// VirtualScreen: offset_x, offset_y, width, height for a capturable using a virtual screen. (Windows)
+pub enum Geometry {
+    Relative(f64, f64, f64, f64),
+    VirtualScreen(i32, i32, u32, u32),
+}
 
 pub trait Capturable: Send + BoxCloneCapturable {
     /// Name of the Capturable, for example the window title, if it is a window.
     fn name(&self) -> String;
 
-    /// Return x, y, width, height of the Capturable as floats relative to the absolute size of the
-    /// screen. For example x=0.5, y=0.0, width=0.5, height=1.0 means the right half of the screen.
-    fn geometry_relative(&self) -> Result<(f64, f64, f64, f64), Box<dyn Error>>;
+    /// Return Geometry of the Capturable.
+    fn geometry(&self) -> Result<Geometry, Box<dyn Error>>;
 
     /// Callback that is called right before input is simulated.
     /// Useful to focus the window on input.
@@ -49,8 +55,6 @@ pub trait Capturable: Send + BoxCloneCapturable {
 
     /// Return a Recorder that can record the current capturable.
     fn recorder(&self, capture_cursor: bool) -> Result<Box<dyn Recorder>, Box<dyn Error>>;
-    fn geometry(&self) -> Result<(u32, u32), Box<dyn Error>>;
-    fn geometry_offset(&self) -> Result<(i32, i32), Box<dyn Error>>;
 }
 
 impl Clone for Box<dyn Capturable> {
@@ -126,10 +130,11 @@ pub fn get_capturables(
         for (i, o) in winctx.get_outputs().iter().enumerate() {
             let captr = CaptrsCapturable::new(
                 i as u8,
-                (o.right - o.left) as u32,
-                (o.bottom - o.top) as u32,
-                o.left - winctx.get_union_rect().left,
-                o.top - winctx.get_union_rect().top,
+                String::from_utf16_lossy(o.DeviceName.as_ref()),
+                (o.DesktopCoordinates.right - o.DesktopCoordinates.left) as u32,
+                (o.DesktopCoordinates.bottom - o.DesktopCoordinates.top) as u32,
+                o.DesktopCoordinates.left - winctx.get_union_rect().left,
+                o.DesktopCoordinates.top - winctx.get_union_rect().top,
             );
             capturables.push(Box::new(captr));
         }
