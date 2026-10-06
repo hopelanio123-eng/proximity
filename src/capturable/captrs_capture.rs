@@ -43,7 +43,7 @@ impl Capturable for CaptrsCapturable {
         Ok(())
     }
     fn recorder(&self, _capture_cursor: bool) -> Result<Box<dyn Recorder>, Box<dyn Error>> {
-        Ok(Box::new(CaptrsRecorder::new(self.id)))
+        Ok(Box::new(CaptrsRecorder::new(self.id)?))
     }
     fn geometry(&self) -> Result<Geometry, Box<dyn Error>> {
         Ok(Geometry::VirtualScreen(
@@ -70,10 +70,10 @@ pub struct CaptrsRecorder {
 }
 
 impl CaptrsRecorder {
-    pub fn new(id: u8) -> CaptrsRecorder {
-        CaptrsRecorder {
-            capturer: Capturer::new(id.into()).unwrap(),
-        }
+    pub fn new(id: u8) -> Result<CaptrsRecorder, Box<dyn Error>> {
+        Ok(CaptrsRecorder {
+            capturer: Capturer::new(id.into())?,
+        })
     }
 }
 
@@ -81,7 +81,7 @@ impl Recorder for CaptrsRecorder {
     fn capture(&mut self) -> Result<crate::video::PixelProvider, Box<dyn Error>> {
         self.capturer
             .capture_store_frame()
-            .map_err(|e| CaptrsError("Captrs failed to capture frame".into()))?;
+            .map_err(|_e| CaptrsError("Captrs failed to capture frame".into()))?;
         let (w, h) = self.capturer.geometry();
         Ok(crate::video::PixelProvider::BGR0(
             w as usize,
