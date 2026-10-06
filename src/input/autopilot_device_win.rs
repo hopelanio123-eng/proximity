@@ -26,7 +26,7 @@ impl WindowsInput {
         unsafe {
             Self {
                 capturable: capturable.clone(),
-                autopilot_device: AutoPilotDevice::new(capturable.clone()),
+                autopilot_device: AutoPilotDevice::new(capturable),
                 pointer_device_handle: CreateSyntheticPointerDevice(PT_PEN, 1, 1),
                 touch_device_handle: CreateSyntheticPointerDevice(PT_TOUCH, 5, 1),
             }
@@ -44,9 +44,6 @@ impl InputDevice for WindowsInput {
     }
 
     fn send_pointer_event(&mut self, event: &PointerEvent) {
-        if !event.is_primary {
-            return;
-        }
         if let Err(err) = self.capturable.before_input() {
             warn!("Failed to activate window, sending no input ({})", err);
             return;
