@@ -40,30 +40,31 @@ fn main() {
     #[cfg(target_os = "windows")]
     let mut tsc_command = Command::new("bash");
     #[cfg(target_os = "windows")]
-    tsc_command.arg("tsc");
+    tsc_command.args(&["-c", "tsc"]);
 
-    match tsc_command.status() {
-        Err(err) => {
-            println!("cargo:warning=Failed to call tsc: {}", err);
-            std::process::exit(1);
-        }
-        Ok(status) => {
-            if !status.success() {
-                match status.code() {
-                    Some(code) => println!("cargo:warning=tsc failed with exitcode: {}", code),
-                    None => println!("cargo:warning=tsc terminated by signal."),
-                };
-                std::process::exit(2);
+    let js_needs_update = || -> Result<bool, Box<dyn std::error::Error>> {
+        Ok(Path::new("ts/lib.ts").metadata()?.modified()?
+            > Path::new("www/static/lib.js").metadata()?.modified()?)
+    }()
+    .unwrap_or(true);
+
+    if js_needs_update {
+        match tsc_command.status() {
+            Err(err) => {
+                println!("cargo:warning=Failed to call tsc: {}", err);
+                std::process::exit(1);
+            }
+            Ok(status) => {
+                if !status.success() {
+                    match status.code() {
+                        Some(code) => println!("cargo:warning=tsc failed with exitcode: {}", code),
+                        None => println!("cargo:warning=tsc terminated by signal."),
+                    };
+                    std::process::exit(2);
+                }
             }
         }
     }
-
-    println!("cargo:rerun-if-changed=lib/error.h");
-    println!("cargo:rerun-if-changed=lib/error.c");
-    println!("cargo:rerun-if-changed=lib/log.h");
-    println!("cargo:rerun-if-changed=lib/log.c");
-    cc::Build::new().file("lib/error.c").compile("error");
-    cc::Build::new().file("lib/log.c").compile("log");
 
     println!("cargo:rerun-if-changed=lib/encode_video.c");
     let mut cc_video = cc::Build::new();
@@ -82,6 +83,14 @@ fn main() {
         cc_video.define("HAS_MEDIAFOUNDATION", None);
     }
     cc_video.compile("video");
+
+    println!("cargo:rerun-if-changed=lib/error.h");
+    println!("cargo:rerun-if-changed=lib/error.c");
+    println!("cargo:rerun-if-changed=lib/log.h");
+    println!("cargo:rerun-if-changed=lib/log.c");
+    cc::Build::new().file("lib/error.c").compile("error");
+    cc::Build::new().file("lib/log.c").compile("log");
+
     let ffmpeg_link_kind =
         // https://github.com/rust-lang/rust/pull/72785
         // https://users.rust-lang.org/t/linking-on-windows-without-wholearchive/49846/3
@@ -91,14 +100,14 @@ fn main() {
         } else {
             "static"
         };
-    println!("cargo:rustc-link-lib={}=avcodec", ffmpeg_link_kind);
     println!("cargo:rustc-link-lib={}=avdevice", ffmpeg_link_kind);
-    println!("cargo:rustc-link-lib={}=avfilter", ffmpeg_link_kind);
     println!("cargo:rustc-link-lib={}=avformat", ffmpeg_link_kind);
-    println!("cargo:rustc-link-lib={}=avutil", ffmpeg_link_kind);
-    println!("cargo:rustc-link-lib={}=postproc", ffmpeg_link_kind);
+    println!("cargo:rustc-link-lib={}=avfilter", ffmpeg_link_kind);
+    println!("cargo:rustc-link-lib={}=avcodec", ffmpeg_link_kind);
     println!("cargo:rustc-link-lib={}=swresample", ffmpeg_link_kind);
     println!("cargo:rustc-link-lib={}=swscale", ffmpeg_link_kind);
+    println!("cargo:rustc-link-lib={}=avutil", ffmpeg_link_kind);
+    println!("cargo:rustc-link-lib={}=postproc", ffmpeg_link_kind);
     println!("cargo:rustc-link-lib={}=x264", ffmpeg_link_kind);
     if env::var("CARGO_FEATURE_FFMPEG_SYSTEM").is_err() {
         println!("cargo:rustc-link-search=deps/dist/lib");
