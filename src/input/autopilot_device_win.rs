@@ -1,7 +1,5 @@
-use autopilot::mouse;
-use autopilot::mouse::ScrollDirection;
-
-use winapi::shared::windef::{HWND, POINT, RECT};
+use winapi::shared::minwindef::DWORD;
+use winapi::shared::windef::{HWND, POINT};
 use winapi::um::winuser::*;
 
 use tracing::warn;
@@ -24,6 +22,7 @@ pub struct WindowsInput {
 impl WindowsInput {
     pub fn new(capturable: Box<dyn Capturable>) -> Self {
         unsafe {
+            InitializeTouchInjection(5, TOUCH_FEEDBACK_DEFAULT);
             Self {
                 capturable: capturable.clone(),
                 autopilot_device: AutoPilotDevice::new(capturable),
@@ -36,11 +35,7 @@ impl WindowsInput {
 
 impl InputDevice for WindowsInput {
     fn send_wheel_event(&mut self, event: &WheelEvent) {
-        match event.dy {
-            1..=i32::MAX => mouse::scroll(ScrollDirection::Up, 1),
-            i32::MIN..=-1 => mouse::scroll(ScrollDirection::Down, 1),
-            0 => {}
-        }
+        unsafe { mouse_event(MOUSEEVENTF_WHEEL, 0, 0, event.dy as DWORD, 0) };
     }
 
     fn send_pointer_event(&mut self, event: &PointerEvent) {
@@ -48,52 +43,46 @@ impl InputDevice for WindowsInput {
             warn!("Failed to activate window, sending no input ({})", err);
             return;
         }
-        let (offset_x, offset_y, width, height) = match self.capturable.geometry().unwrap() {
-            Geometry::VirtualScreen(offset_x, offset_y, width, height) => {
-                (offset_x, offset_y, width, height)
-            }
-            _ => unreachable!(),
-        };
+        let (offset_x, offset_y, width, height, left, top) =
+            match self.capturable.geometry().unwrap() {
+                Geometry::VirtualScreen(offset_x, offset_y, width, height, left, top) => {
+                    (offset_x, offset_y, width, height, left, top)
+                }
+                _ => unreachable!(),
+            };
         let (x, y) = (
             (event.x * width as f64) as i32 + offset_x,
             (event.y * height as f64) as i32 + offset_y,
         );
-        let mut pointer_type_info = POINTER_TYPE_INFO {
-            type_: PT_PEN,
-            u: unsafe { std::mem::zeroed() },
+        let button_change_type = match event.buttons {
+            Button::PRIMARY => POINTER_CHANGE_FIRSTBUTTON_DOWN,
+            Button::SECONDARY => POINTER_CHANGE_SECONDBUTTON_DOWN,
+            Button::AUXILARY => POINTER_CHANGE_THIRDBUTTON_DOWN,
+            Button::NONE => POINTER_CHANGE_NONE,
+            _ => POINTER_CHANGE_NONE,
         };
-        let pointer_flags;
-        let button_change_type;
-        match event.event_type {
+        let mut pointer_flags = match event.event_type {
             PointerEventType::DOWN => {
-                pointer_flags = POINTER_FLAG_INRANGE
-                    | POINTER_FLAG_INCONTACT
-                    | POINTER_FLAG_PRIMARY
-                    | POINTER_FLAG_DOWN
-                    | POINTER_FLAG_UPDATE;
-                button_change_type = POINTER_CHANGE_FIRSTBUTTON_DOWN;
-            }
-
-            PointerEventType::UP => {
-                pointer_flags = POINTER_FLAG_PRIMARY | POINTER_FLAG_UP;
-                button_change_type = POINTER_CHANGE_FIRSTBUTTON_UP;
+                POINTER_FLAG_INRANGE | POINTER_FLAG_INCONTACT | POINTER_FLAG_DOWN
             }
             PointerEventType::MOVE => {
-                pointer_flags = POINTER_FLAG_INRANGE
-                    | POINTER_FLAG_INCONTACT
-                    | POINTER_FLAG_PRIMARY
-                    | POINTER_FLAG_UPDATE;
-                button_change_type = POINTER_CHANGE_NONE;
+                POINTER_FLAG_INRANGE | POINTER_FLAG_INCONTACT | POINTER_FLAG_UPDATE
             }
-
+            PointerEventType::UP => POINTER_FLAG_UP,
             PointerEventType::CANCEL => {
-                pointer_flags = POINTER_FLAG_PRIMARY | POINTER_FLAG_CANCELED;
-                button_change_type = POINTER_CHANGE_NONE;
+                POINTER_FLAG_INRANGE | POINTER_FLAG_UPDATE | POINTER_FLAG_CANCELED
             }
         };
+        if event.is_primary {
+            pointer_flags |= POINTER_FLAG_PRIMARY;
+        }
         match event.pointer_type {
             PointerType::Pen => {
                 unsafe {
+                    let mut pointer_type_info = POINTER_TYPE_INFO {
+                        type_: PT_PEN,
+                        u: std::mem::zeroed(),
+                    };
                     *pointer_type_info.u.penInfo_mut() = POINTER_PEN_INFO {
                         pointerInfo: POINTER_INFO {
                             pointerType: PT_PEN,
@@ -118,7 +107,7 @@ impl InputDevice for WindowsInput {
                             | PEN_MASK_ROTATION
                             | PEN_MASK_TILT_X
                             | PEN_MASK_TILT_Y,
-                        pressure: (event.pressure * 100f64) as u32,
+                        pressure: (event.pressure * 1024f64) as u32,
                         rotation: event.twist as u32,
                         tiltX: event.tilt_x,
                         tiltY: event.tilt_y,
@@ -128,64 +117,68 @@ impl InputDevice for WindowsInput {
             }
             PointerType::Touch => {
                 unsafe {
-                    *pointer_type_info.u.touchInfo_mut() = POINTER_TOUCH_INFO {
-                        pointerInfo: POINTER_INFO {
-                            pointerType: PT_TOUCH,
-                            pointerId: event.pointer_id as u32,
-                            frameId: 0,
-                            pointerFlags: pointer_flags,
-                            sourceDevice: self.touch_device_handle as *mut winapi::ctypes::c_void, //maybe use syntheticPointerDeviceHandle here but works with 0
-                            hwndTarget: 0 as HWND,
-                            ptPixelLocation: POINT { x: x, y: y },
-                            ptHimetricLocation: POINT { x: 0, y: 0 },
-                            ptPixelLocationRaw: POINT { x: x, y: y },
-                            ptHimetricLocationRaw: POINT { x: 0, y: 0 },
-                            dwTime: 0,
-                            historyCount: 1,
-                            InputData: 0,
-                            dwKeyStates: 0,
-                            PerformanceCount: 0,
-                            ButtonChangeType: button_change_type,
-                        },
-                        touchFlags: TOUCH_FLAG_NONE,
-                        touchMask: TOUCH_MASK_PRESSURE,
-                        orientation: 0,
-                        pressure: (event.pressure * 100f64) as u32,
-                        rcContact: RECT {
-                            left: 0,
-                            top: 0,
-                            right: event.width as i32,
-                            bottom: event.height as i32,
-                        },
-                        rcContactRaw: RECT {
-                            left: 0,
-                            top: 0,
-                            right: event.width as i32,
-                            bottom: event.height as i32,
-                        },
+                    let mut pointer_type_info = POINTER_TYPE_INFO {
+                        type_: PT_TOUCH,
+                        u: std::mem::zeroed(),
                     };
+
+                    let mut pointer_touch_info: POINTER_TOUCH_INFO = std::mem::zeroed();
+                    pointer_touch_info.pointerInfo = std::mem::zeroed();
+                    pointer_touch_info.pointerInfo.pointerType = PT_TOUCH;
+                    pointer_touch_info.pointerInfo.pointerFlags = pointer_flags;
+                    pointer_touch_info.pointerInfo.pointerId = event.pointer_id as u32; //event.pointer_id as u32; Using the actual pointer id causes errors in the touch injection
+                    pointer_touch_info.pointerInfo.ptPixelLocation = POINT { x, y };
+                    pointer_touch_info.touchFlags = TOUCH_FLAG_NONE;
+                    pointer_touch_info.touchMask = TOUCH_MASK_PRESSURE;
+                    pointer_touch_info.pressure = (event.pressure * 1024f64) as u32;
+
+                    pointer_touch_info.pointerInfo.ButtonChangeType = button_change_type;
+
+                    *pointer_type_info.u.touchInfo_mut() = pointer_touch_info;
                     InjectSyntheticPointerInput(self.touch_device_handle, &pointer_type_info, 1);
                 }
             }
             PointerType::Mouse => {
-                if let Err(err) = mouse::move_to(autopilot::geometry::Point::new(
-                    event.x * width as f64,
-                    event.y * height as f64,
-                )) {
-                    warn!("Could not move mouse: {}", err);
+                let mut dw_flags = 0;
+
+                let (screen_x, screen_y) = (
+                    (event.x * width as f64) as i32 + left,
+                    (event.y * height as f64) as i32 + top,
+                );
+
+                match event.event_type {
+                    PointerEventType::DOWN => match event.buttons {
+                        Button::PRIMARY => {
+                            dw_flags |= MOUSEEVENTF_LEFTDOWN;
+                        }
+                        Button::SECONDARY => {
+                            dw_flags |= MOUSEEVENTF_RIGHTDOWN;
+                        }
+                        Button::AUXILARY => {
+                            dw_flags |= MOUSEEVENTF_MIDDLEDOWN;
+                        }
+                        _ => {}
+                    },
+                    PointerEventType::MOVE => {
+                        unsafe { SetCursorPos(screen_x, screen_y) };
+                    }
+                    PointerEventType::UP => match event.button {
+                        Button::PRIMARY => {
+                            dw_flags |= MOUSEEVENTF_LEFTUP;
+                        }
+                        Button::SECONDARY => {
+                            dw_flags |= MOUSEEVENTF_RIGHTUP;
+                        }
+                        Button::AUXILARY => {
+                            dw_flags |= MOUSEEVENTF_MIDDLEUP;
+                        }
+                        _ => {}
+                    },
+                    PointerEventType::CANCEL => {
+                        dw_flags |= MOUSEEVENTF_LEFTUP;
+                    }
                 }
-                match event.button {
-                    Button::PRIMARY => {
-                        mouse::toggle(mouse::Button::Left, event.buttons.contains(event.button))
-                    }
-                    Button::AUXILARY => {
-                        mouse::toggle(mouse::Button::Middle, event.buttons.contains(event.button))
-                    }
-                    Button::SECONDARY => {
-                        mouse::toggle(mouse::Button::Right, event.buttons.contains(event.button))
-                    }
-                    _ => (),
-                }
+                unsafe { mouse_event(dw_flags, 0 as u32, 0 as u32, 0, 0) };
             }
             PointerType::Unknown => todo!(),
         }
