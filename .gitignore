@@ -1,10 +1,11 @@
 /target
 /deps/ffmpeg
 /deps/x264
-/deps/dist
+/deps/dist*
 /deps/nv-codec-headers
 /deps/libva
 c_helper/target
 c_helper/Cargo.lock
 *.js
 *.js.map
+*.tar.gz

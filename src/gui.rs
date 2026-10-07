@@ -1,3 +1,5 @@
+use std::cmp::min;
+use std::io::Cursor;
 use std::iter::Iterator;
 use std::net::{IpAddr, SocketAddr};
 
@@ -5,7 +7,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use tracing::{error, info};
 
 use fltk::{
-    app::App,
+    app::{awake_callback, App},
     button::{Button, CheckButton},
     frame::Frame,
     input::{Input, IntInput},
@@ -16,10 +18,10 @@ use fltk::{
 };
 
 #[cfg(not(target_os = "windows"))]
-use pnet::datalink;
+use pnet_datalink as datalink;
 
 use crate::config::{write_config, Config};
-use crate::websocket::Ws2UiMessage;
+use crate::web::Web2UiMessage::UInputInaccessible;
 
 pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let width = 200;
@@ -28,7 +30,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     let app = App::default().with_scheme(fltk::app::AppScheme::Gtk);
     let mut wind = Window::default()
-        .with_size(660, 620)
+        .with_size(660, 600)
         .center_screen()
         .with_label(&format!("Weylus - {}", env!("CARGO_PKG_VERSION")));
     wind.set_xclass("weylus");
@@ -59,15 +61,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_label("Port");
     input_port.set_value(&config.web_port.to_string());
 
-    let mut input_ws_port = IntInput::default()
-        .with_size(width, height)
-        .below_of(&input_port, padding)
-        .with_label("Websocket Port");
-    input_ws_port.set_value(&config.websocket_port.to_string());
-
     let mut check_auto_start = CheckButton::default()
         .with_size(70, height)
-        .below_of(&input_ws_port, padding)
+        .below_of(&input_port, padding + 5)
         .with_label("Auto Start");
     check_auto_start.set_tooltip("Start Weylus server immediately on program start.");
     check_auto_start.set_checked(config.auto_start);
@@ -193,11 +189,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                     };
                     let bind_addr: IpAddr = input_bind_addr.value().parse()?;
                     let web_port: u16 = input_port.value().parse()?;
-                    let ws_port: u16 = input_ws_port.value().parse()?;
 
                     config.access_code = access_code.map(|s| s.to_string());
                     config.web_port = web_port;
-                    config.websocket_port = ws_port;
                     config.bind_address = bind_addr;
                     config.auto_start = check_auto_start.is_checked();
                     #[cfg(target_os = "linux")]
@@ -218,33 +212,28 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                         config.try_mediafoundation = check_native_hw_accel.is_checked();
                     }
                 }
-                if !weylus.start(
-                    &config,
-                    |_| {},
-                    |message| match message {
-                        Ws2UiMessage::UInputInaccessible => {
-                            let w = 500;
-                            let h = 300;
-                            let mut pop_up = Window::default()
-                                .with_size(w, h)
-                                .center_screen()
-                                .with_label("Weylus - UInput inaccessible!");
-                            pop_up.set_xclass("weylus");
+                if !weylus.start(&config, |message| match message {
+                    UInputInaccessible => awake_callback(move || {
+                        let w = 500;
+                        let h = 300;
+                        let mut pop_up = Window::default()
+                            .with_size(w, h)
+                            .center_screen()
+                            .with_label("Weylus - UInput inaccessible!");
+                        pop_up.set_xclass("weylus");
 
-                            let buf = TextBuffer::default();
-                            let mut pop_up_text = TextDisplay::default().with_size(w, h);
-                            pop_up_text.set_buffer(buf);
-                            pop_up_text.wrap_mode(fltk::text::WrapMode::AtBounds, 5);
-                            let mut buf = pop_up_text.buffer().unwrap();
-                            buf.set_text(std::include_str!("strings/uinput_error.txt"));
+                        let buf = TextBuffer::default();
+                        let mut pop_up_text = TextDisplay::default().with_size(w, h);
+                        pop_up_text.set_buffer(buf);
+                        pop_up_text.wrap_mode(fltk::text::WrapMode::AtBounds, 5);
+                        let mut buf = pop_up_text.buffer().unwrap();
+                        buf.set_text(std::include_str!("strings/uinput_error.txt"));
 
-                            pop_up.end();
-                            pop_up.make_modal(true);
-                            pop_up.show();
-                        }
-                        _ => {}
-                    },
-                ) {
+                        pop_up.end();
+                        pop_up.make_modal(true);
+                        pop_up.show();
+                    }),
+                }) {
                     return Ok(());
                 }
                 is_server_running = true;
@@ -289,14 +278,14 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                 {
                     use image::Luma;
                     use qrcode::QrCode;
-                    let addr_string = format!("http://{}", web_sock.to_string());
+                    let addr_string = format!("http://{}", web_sock);
                     output_server_addr.set_value(&addr_string);
                     let mut url_string = addr_string;
                     if let Some(access_code) = &config.access_code {
                         url_string.push_str("?access_code=");
                         url_string.push_str(
                             &percent_encoding::utf8_percent_encode(
-                                &access_code,
+                                access_code,
                                 percent_encoding::NON_ALPHANUMERIC,
                             )
                             .to_string(),
@@ -305,14 +294,13 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                     let code = QrCode::new(&url_string).unwrap();
                     let img_buf = code.render::<Luma<u8>>().build();
                     let image = image::DynamicImage::ImageLuma8(img_buf);
-                    let image = image.resize_exact(
-                        qr_frame.width() as u32,
-                        qr_frame.height() as u32,
-                        image::imageops::FilterType::Nearest,
-                    );
+                    let dims = min(qr_frame.width(), qr_frame.height()) as u32;
+                    let image =
+                        image.resize_exact(dims, dims, image::imageops::FilterType::Nearest);
                     let mut buf = vec![];
+                    let mut cursor = Cursor::new(&mut buf);
                     image
-                        .write_to(&mut buf, image::ImageOutputFormat::Png)
+                        .write_to(&mut cursor, image::ImageFormat::Png)
                         .unwrap();
                     let png = fltk::image::PngImage::from_data(&buf).unwrap();
 
@@ -349,4 +337,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     but_toggle.set_callback(toggle_server);
 
     app.run().expect("Failed to run Gui!");
+
+    // TODO: Remove when https://github.com/fltk-rs/fltk-rs/issues/1480 is fixed
+    // this is required to drop the callback and do a graceful shutdown of the web server
+    but_toggle.set_callback(|_| ());
 }
