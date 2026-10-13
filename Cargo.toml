@@ -10,9 +10,12 @@ description = "Use your iPad or Android tablet as graphic tablet."
 autopilot = { git = "https://github.com/H-M-H/autopilot-rs.git", rev = "63eed09c715bfb665bb23172a3930a528e11691c" }
 bitflags = { version = "^2.6", features = ["serde"] }
 bytes = "1.7.1"
+clap = { version = "4.5.18", features = ["derive"] }
+clap_complete = "4.5.29"
 dirs = "^5.0"
 fastwebsockets = { version = "0.8.0", features = ["upgrade", "unstable-split"] }
-fltk = { version = "^1", features = ["no-pango"] }
+fltk = { version = "^1" }
+fltk-theme = "0.7.3"
 handlebars = "^6.1"
 http-body-util = "0.1.2"
 hyper = { version = "^1.4", features = ["server", "http1", "http2"] }
@@ -24,7 +27,6 @@ qrcode = "0.14.0"
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = "^1.0"
 signal-hook = "0.3.17"
-structopt = { version = "^0.3", features = ["color", "suggestions"], default-features = false }
 tokio = { version = "^1", features = ["fs", "macros", "rt-multi-thread", "sync"] }
 toml = "^0.8"
 tracing = "^0.1"

@@ -352,8 +352,7 @@ class PEvent {
     width: number;
     height: number;
 
-    constructor(eventType: string, event: PointerEvent, target: HTMLElement) {
-        let targetRect = target.getBoundingClientRect();
+    constructor(eventType: string, event: PointerEvent, targetRect: DOMRect) {
         let diag_len = Math.sqrt(targetRect.width * targetRect.width + targetRect.height * targetRect.height)
         this.event_type = eventType.toString();
         this.pointer_id = event.pointerId;
@@ -579,8 +578,12 @@ class Painter {
     }
 
     onmove(event: PointerEvent) {
-        if (this.lines_active.has(event.pointerId))
-            this.appendEventToLine(event);
+        if (this.lines_active.has(event.pointerId)) {
+            const events = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [event];
+            for (const e of events) {
+                this.appendEventToLine(e);
+            }
+        }
     }
 
     onstop(event: PointerEvent) {
@@ -639,17 +642,21 @@ class PointerHandler {
 
     onEvent(event: PointerEvent, event_type: string) {
         if (this.pointerTypes.includes(event.pointerType)) {
-            this.webSocket.send(
-                JSON.stringify(
-                    {
-                        "PointerEvent": new PEvent(
-                            event_type,
-                            event,
-                            event.target as HTMLElement
-                        )
-                    }
-                )
-            );
+            let rect = (event.target as HTMLElement).getBoundingClientRect();
+            const events = event_type === "pointermove" && typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [event];
+            for (let event of events) {
+                this.webSocket.send(
+                    JSON.stringify(
+                        {
+                            "PointerEvent": new PEvent(
+                                event_type,
+                                event,
+                                rect
+                            )
+                        }
+                    )
+                );
+            }
             if (settings.visible) {
                 settings.toggle();
             }
