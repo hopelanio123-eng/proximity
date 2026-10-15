@@ -7,7 +7,7 @@ use std::sync::{mpsc, Arc};
 use std::thread::{spawn, JoinHandle};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::channel;
-use tracing::{debug, error, warn};
+use tracing::{error, trace, warn};
 
 use crate::capturable::{get_capturables, Capturable, Recorder};
 use crate::input::device::{InputDevice, InputDeviceType};
@@ -61,6 +61,7 @@ pub struct WeylusClientConfig {
     pub encoder_options: EncoderOptions,
     #[cfg(target_os = "linux")]
     pub wayland_support: bool,
+    pub no_gui: bool,
 }
 
 impl<S, R, FnUInput> WeylusClientHandler<S, R, FnUInput> {
@@ -105,19 +106,35 @@ impl<S, R, FnUInput> WeylusClientHandler<S, R, FnUInput> {
     {
         for message in self.receiver.take().unwrap() {
             match message {
-                Ok(message) => match message {
-                    MessageInbound::PointerEvent(event) => self.process_pointer_event(&event),
-                    MessageInbound::WheelEvent(event) => self.process_wheel_event(&event),
-                    MessageInbound::KeyboardEvent(event) => self.process_keyboard_event(&event),
-                    MessageInbound::GetCapturableList => self.send_capturable_list(),
-                    MessageInbound::Config(config) => self.update_config(config),
-                    MessageInbound::PauseVideo => {
-                        self.video_sender.send(VideoCommands::Pause).unwrap()
+                Ok(message) => {
+                    trace!("Received message: {message:?}");
+                    match message {
+                        MessageInbound::PointerEvent(event) => self.process_pointer_event(&event),
+                        MessageInbound::WheelEvent(event) => self.process_wheel_event(&event),
+                        MessageInbound::KeyboardEvent(event) => self.process_keyboard_event(&event),
+                        MessageInbound::GetCapturableList => self.send_capturable_list(),
+                        MessageInbound::Config(config) => self.update_config(config),
+                        MessageInbound::PauseVideo => {
+                            self.video_sender.send(VideoCommands::Pause).unwrap()
+                        }
+                        MessageInbound::ResumeVideo => {
+                            self.video_sender.send(VideoCommands::Resume).unwrap()
+                        }
+                        MessageInbound::ChooseCustomInputAreas => {
+                            let (sender, receiver) = std::sync::mpsc::channel();
+                            crate::gui::get_input_area(self.config.no_gui, sender);
+                            let mut sender = self.sender.clone();
+                            spawn(move || {
+                                while let Ok(areas) = receiver.recv() {
+                                    send_message(
+                                        &mut sender,
+                                        MessageOutbound::CustomInputAreas(areas),
+                                    );
+                                }
+                            });
+                        }
                     }
-                    MessageInbound::ResumeVideo => {
-                        self.video_sender.send(VideoCommands::Resume).unwrap()
-                    }
-                },
+                }
                 Err(err) => {
                     warn!("Failed to read message {err}!");
                     self.send_message(MessageOutbound::Error(
@@ -304,7 +321,7 @@ fn handle_video<S: WeylusSender + Clone + 'static>(
         last_frame = next_frame;
 
         if frames_passed > 0 {
-            debug!("Dropped {frames_passed} frame(s)!");
+            trace!("Dropped {frames_passed} frame(s)!");
         }
 
         match receiver.recv_timeout(if paused { EFFECTIVE_INIFINITY } else { timeout }) {
@@ -484,7 +501,13 @@ pub fn weylus_websocket_channel(
 
                 let frame = tokio::select! {
                     _ = semaphore_shutdown.acquire() => break,
-                    frame = fut => frame.unwrap(),
+                    frame = fut => match frame {
+                        Ok(frame) => frame,
+                        Err(err) => {
+                            warn!("Invalid websocket frame: {err}.");
+                            break;
+                        },
+                    },
                 };
                 match frame.opcode {
                     OpCode::Close => break,
