@@ -413,8 +413,8 @@ class PEvent {
     buttons: number;
     x: number;
     y: number;
-    movement_x: number;
-    movement_y: number;
+    // movement_x: number;
+    // movement_y: number;
     pressure: number;
     tilt_x: number;
     tilt_y: number;
@@ -460,8 +460,8 @@ class PEvent {
         }
         this.x = (event.clientX - targetRect.left) / targetRect.width * x_scale + x_offset;
         this.y = (event.clientY - targetRect.top) / targetRect.height * y_scale + y_offset;
-        this.movement_x = event.movementX ? event.movementX : 0;
-        this.movement_y = event.movementY ? event.movementY : 0;
+        // this.movement_x = event.movementX ? event.movementX : 0;
+        // this.movement_y = event.movementY ? event.movementY : 0;
         this.pressure = Math.max(event.pressure, settings.range_min_pressure.valueAsNumber);
         this.tilt_x = event.tiltX;
         this.tilt_y = event.tiltY;
