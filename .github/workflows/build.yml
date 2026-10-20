@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     container: docker://hhmhh/weylus_build:latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/cache@v4
+    - uses: actions/checkout@v6
+    - uses: actions/cache@v5
       with:
         path: deps/dist*
-        key: ${{ runner.os }}-deps-${{ hashFiles('deps/*') }}
-    - uses: actions/cache@v4
+        key: ${{ runner.os }}-deps-${{ hashFiles('deps/*.sh', 'deps/*.patch') }}
+    - uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry
@@ -29,17 +29,17 @@ jobs:
       run: ./docker_build.sh
       shell: bash
     - name: Artifacts1
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: linux
         path: packages/weylus-linux.zip
     - name: Artifacts2
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: linux-deb
         path: packages/Weylus*.deb
     - name: Artifacts3
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: windows
         path: packages/weylus-windows.zip
@@ -59,12 +59,12 @@ jobs:
     runs-on: ubuntu-latest
     container: docker://hhmhh/weylus_build_alpine:latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/cache@v4
+    - uses: actions/checkout@v6
+    - uses: actions/cache@v5
       with:
         path: deps/dist*
-        key: ${{ runner.os }}-alpine-deps-${{ hashFiles('deps/*') }}
-    - uses: actions/cache@v4
+        key: ${{ runner.os }}-alpine-deps-${{ hashFiles('deps/*.sh', 'deps/*.patch') }}
+    - uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry
@@ -75,7 +75,7 @@ jobs:
       run: RUSTFLAGS='-C target-feature=-crt-static' cargo build --release && cd target/release && tar czf weylus-linux-alpine-musl.tar.gz weylus
       shell: bash
     - name: Artifacts1
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: linux-alpine-musl
         path: target/release/weylus-linux-alpine-musl.tar.gz
@@ -92,15 +92,15 @@ jobs:
   build-macos:
     strategy:
       matrix:
-        os: [macos-latest, macos-14-large] # -latest is for Apple Silicon, -14-large is for Intel
+        os: [macos-latest, macos-15-intel] # -latest is for Apple Silicon, -15-intel is for Intel
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/cache@v4
+    - uses: actions/checkout@v6
+    - uses: actions/cache@v5
       with:
         path: deps/dist
-        key: ${{ runner.os }}-deps-${{ hashFiles('deps/*') }}
-    - uses: actions/cache@v4
+        key: ${{ runner.os }}-deps-${{ hashFiles('deps/*.sh', 'deps/*.patch') }}
+    - uses: actions/cache@v5
       with:
         path: |
           ~/.cargo/registry
@@ -122,13 +122,13 @@ jobs:
         echo "MACOS_BUILD_NAME=$MACOS_BUILD_NAME" >> $GITHUB_ENV
         cd target/release/bundle/osx/ && zip -r ${MACOS_BUILD_NAME}.zip Weylus.app
     - name: Artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ env.MACOS_BUILD_NAME }}
         path: target/release/bundle/osx/${{ env.MACOS_BUILD_NAME }}.zip
     - name: ArtifactsDebug
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: ${{ runner.os }}-ffbuild
         path: |

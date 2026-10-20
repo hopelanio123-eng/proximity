@@ -2,14 +2,27 @@
 
 set -ex
 
-test -d x264 || git clone --depth 1 -b stable https://code.videolan.org/videolan/x264.git x264
-test -d ffmpeg || git clone --depth 1 -b n8.0 https://git.ffmpeg.org/ffmpeg.git ffmpeg
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/refs.sh"
+source "$SCRIPT_DIR/hashes.sh"
+
+clone_at_commit() {
+    local url="$1" dir="$2" commit="$3"
+    if [ ! -d "$dir" ]; then
+        git clone --filter=blob:none "$url" "$dir"
+        git -C "$dir" checkout "$commit"
+    fi
+}
+
+clone_at_commit "$X264_URL" x264 "$X264_COMMIT"
+clone_at_commit "$FFMPEG_URL" ffmpeg "$FFMPEG_COMMIT"
+
 if [ "$TARGET_OS" == "linux" ]; then
-    test -d nv-codec-headers || git clone --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
-    test -d libva || git clone --depth 1 -b 2.22.0 https://github.com/intel/libva
+    clone_at_commit "$NV_CODEC_URL" nv-codec-headers "$NV_CODEC_COMMIT"
+    clone_at_commit "$LIBVA_URL" libva "$LIBVA_COMMIT"
 fi
 if [ "$TARGET_OS" == "windows" ]; then
-    test -d nv-codec-headers || git clone --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+    clone_at_commit "$NV_CODEC_URL" nv-codec-headers "$NV_CODEC_COMMIT"
 fi
 
 if [ "$TARGET_OS" == "windows" ] && [ "$HOST_OS" == "windows" ]; then
@@ -17,3 +30,7 @@ if [ "$TARGET_OS" == "windows" ] && [ "$HOST_OS" == "windows" ]; then
     git apply ../command_limit.patch
     git apply ../awk.patch
 fi
+
+
+
+
