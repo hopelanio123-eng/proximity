@@ -17,6 +17,7 @@ pub enum MessageInbound {
     PointerEvent(PointerEvent),
     WheelEvent(WheelEvent),
     KeyboardEvent(KeyboardEvent),
+    TextEvent(TextEvent),
     GetCapturableList,
     Config(ClientConfiguration),
     PauseVideo,
@@ -158,6 +159,13 @@ pub struct KeyboardEvent {
     pub meta: bool,
 }
 
+/// A chunk of arbitrary unicode text to be typed on the host. Used to support
+/// on-screen keyboards on mobile clients which do not emit proper key events.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TextEvent {
+    pub text: String,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PointerEvent {
     pub event_type: PointerEventType,
@@ -188,12 +196,12 @@ pub struct WheelEvent {
     pub timestamp: u64,
 }
 
-pub trait WeylusSender {
+pub trait KoshkaSender {
     type Error: std::error::Error;
     fn send_message(&mut self, message: MessageOutbound) -> Result<(), Self::Error>;
     fn send_video(&mut self, bytes: &[u8]) -> Result<(), Self::Error>;
 }
 
-pub trait WeylusReceiver: Iterator<Item = Result<MessageInbound, Self::Error>> {
+pub trait KoshkaReceiver: Iterator<Item = Result<MessageInbound, Self::Error>> {
     type Error: std::error::Error;
 }

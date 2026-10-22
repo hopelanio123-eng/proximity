@@ -12,8 +12,8 @@ use tracing::{error, trace, warn};
 use crate::capturable::{get_capturables, Capturable, Recorder};
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
-    ClientConfiguration, KeyboardEvent, MessageInbound, MessageOutbound, PointerEvent,
-    WeylusReceiver, WeylusSender, WheelEvent,
+    ClientConfiguration, KeyboardEvent, MessageInbound, MessageOutbound, PointerEvent, TextEvent,
+    KoshkaReceiver, KoshkaSender, WheelEvent,
 };
 
 use crate::cerror::CErrorCode;
@@ -36,21 +36,21 @@ enum VideoCommands {
 
 fn send_message<S>(sender: &mut S, message: MessageOutbound)
 where
-    S: WeylusSender,
+    S: KoshkaSender,
 {
     if let Err(err) = sender.send_message(message) {
         warn!("Failed to send message to client: {err}");
     }
 }
 
-pub struct WeylusClientHandler<S, R, FnUInput> {
+pub struct KoshkaClientHandler<S, R, FnUInput> {
     sender: S,
     receiver: Option<R>,
     video_sender: mpsc::Sender<VideoCommands>,
     input_device: Option<Box<dyn InputDevice>>,
     capturables: Vec<Box<dyn Capturable>>,
     on_uinput_inaccessible: FnUInput,
-    config: WeylusClientConfig,
+    config: KoshkaClientConfig,
     #[cfg(target_os = "linux")]
     capture_cursor: bool,
     client_name: Option<String>,
@@ -58,23 +58,23 @@ pub struct WeylusClientHandler<S, R, FnUInput> {
 }
 
 #[derive(Clone, Copy)]
-pub struct WeylusClientConfig {
+pub struct KoshkaClientConfig {
     pub encoder_options: EncoderOptions,
     #[cfg(target_os = "linux")]
     pub wayland_support: bool,
     pub no_gui: bool,
 }
 
-impl<S, R, FnUInput> WeylusClientHandler<S, R, FnUInput> {
+impl<S, R, FnUInput> KoshkaClientHandler<S, R, FnUInput> {
     pub fn new(
         sender: S,
         receiver: R,
         on_uinput_inaccessible: FnUInput,
-        config: WeylusClientConfig,
+        config: KoshkaClientConfig,
     ) -> Self
     where
-        R: WeylusReceiver,
-        S: WeylusSender + Clone + Send + Sync + 'static,
+        R: KoshkaReceiver,
+        S: KoshkaSender + Clone + Send + Sync + 'static,
     {
         let (video_sender, video_receiver) = mpsc::channel::<VideoCommands>();
         let video_thread = {
@@ -101,8 +101,8 @@ impl<S, R, FnUInput> WeylusClientHandler<S, R, FnUInput> {
 
     pub fn run(mut self)
     where
-        R: WeylusReceiver,
-        S: WeylusSender + Clone + Send + Sync + 'static,
+        R: KoshkaReceiver,
+        S: KoshkaSender + Clone + Send + Sync + 'static,
         FnUInput: Fn(),
     {
         for message in self.receiver.take().unwrap() {
@@ -113,6 +113,7 @@ impl<S, R, FnUInput> WeylusClientHandler<S, R, FnUInput> {
                         MessageInbound::PointerEvent(event) => self.process_pointer_event(&event),
                         MessageInbound::WheelEvent(event) => self.process_wheel_event(&event),
                         MessageInbound::KeyboardEvent(event) => self.process_keyboard_event(&event),
+                        MessageInbound::TextEvent(event) => self.process_text_event(&event),
                         MessageInbound::GetCapturableList => self.send_capturable_list(),
                         MessageInbound::Config(config) => self.update_config(config),
                         MessageInbound::PauseVideo => {
@@ -156,7 +157,7 @@ impl<S, R, FnUInput> WeylusClientHandler<S, R, FnUInput> {
 
     fn send_message(&mut self, message: MessageOutbound)
     where
-        S: WeylusSender,
+        S: KoshkaSender,
     {
         send_message(&mut self.sender, message)
     }
@@ -190,9 +191,20 @@ impl<S, R, FnUInput> WeylusClientHandler<S, R, FnUInput> {
         }
     }
 
+    fn process_text_event(&mut self, event: &TextEvent) {
+        if self.input_device.is_some() {
+            self.input_device
+                .as_mut()
+                .unwrap()
+                .send_text_event(event)
+        } else {
+            warn!("Input device is not initalized, can not process TextEvent!");
+        }
+    }
+
     fn send_capturable_list(&mut self)
     where
-        S: WeylusSender,
+        S: KoshkaSender,
     {
         let mut windows = Vec::<String>::new();
         self.capturables = get_capturables(
@@ -209,7 +221,7 @@ impl<S, R, FnUInput> WeylusClientHandler<S, R, FnUInput> {
 
     fn update_config(&mut self, config: ClientConfiguration)
     where
-        S: WeylusSender,
+        S: KoshkaSender,
         FnUInput: Fn(),
     {
         let client_name_changed = if self.client_name != config.client_name {
@@ -300,7 +312,7 @@ impl<S, R, FnUInput> WeylusClientHandler<S, R, FnUInput> {
     }
 }
 
-fn handle_video<S: WeylusSender + Clone + 'static>(
+fn handle_video<S: KoshkaSender + Clone + 'static>(
     receiver: mpsc::Receiver<VideoCommands>,
     mut sender: S,
     encoder_options: EncoderOptions,
@@ -440,11 +452,11 @@ fn handle_video<S: WeylusSender + Clone + 'static>(
     }
 }
 
-pub struct WsWeylusReceiver {
+pub struct WsKoshkaReceiver {
     recv: tokio::sync::mpsc::Receiver<MessageInbound>,
 }
 
-impl Iterator for WsWeylusReceiver {
+impl Iterator for WsKoshkaReceiver {
     type Item = Result<MessageInbound, Infallible>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -452,7 +464,7 @@ impl Iterator for WsWeylusReceiver {
     }
 }
 
-impl WeylusReceiver for WsWeylusReceiver {
+impl KoshkaReceiver for WsKoshkaReceiver {
     type Error = Infallible;
 }
 
@@ -465,11 +477,11 @@ pub enum WsMessage {
 unsafe impl Send for WsMessage {}
 
 #[derive(Clone)]
-pub struct WsWeylusSender {
+pub struct WsKoshkaSender {
     sender: tokio::sync::mpsc::Sender<WsMessage>,
 }
 
-impl WeylusSender for WsWeylusSender {
+impl KoshkaSender for WsKoshkaSender {
     type Error = tokio::sync::mpsc::error::SendError<WsMessage>;
 
     fn send_message(&mut self, message: MessageOutbound) -> Result<(), Self::Error> {
@@ -482,10 +494,10 @@ impl WeylusSender for WsWeylusSender {
     }
 }
 
-pub fn weylus_websocket_channel(
+pub fn koshka_websocket_channel(
     websocket: WebSocket<TokioIo<Upgraded>>,
     semaphore_shutdown: Arc<tokio::sync::Semaphore>,
-) -> (WsWeylusSender, WsWeylusReceiver) {
+) -> (WsKoshkaSender, WsKoshkaReceiver) {
     let (rx, mut tx) = websocket.split(|ws| tokio::io::split(ws));
 
     let mut rx = FragmentCollectorRead::new(rx);
@@ -521,7 +533,7 @@ pub fn weylus_websocket_channel(
                     OpCode::Text => match serde_json::from_slice(&frame.payload) {
                         Ok(msg) => {
                             if let Err(err) = sender_inbound.send(msg).await {
-                                warn!("Failed to forward inbound message to WeylusClientHandler: {err}.");
+                                warn!("Failed to forward inbound message to KoshkaClientHandler: {err}.");
                             }
                         }
                         Err(err) => warn!("Failed to parse message: {err}"),
@@ -572,10 +584,10 @@ pub fn weylus_websocket_channel(
     });
 
     (
-        WsWeylusSender {
+        WsKoshkaSender {
             sender: sender_outbound,
         },
-        WsWeylusReceiver {
+        WsKoshkaReceiver {
             recv: receiver_inbound,
         },
     )

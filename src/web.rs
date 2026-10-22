@@ -20,7 +20,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
-use crate::websocket::{weylus_websocket_channel, WeylusClientConfig, WeylusClientHandler};
+use crate::websocket::{koshka_websocket_channel, KoshkaClientConfig, KoshkaClientHandler};
 
 #[derive(Debug)]
 pub enum WebStartUpMessage {
@@ -163,14 +163,14 @@ async fn serve(
             let (response, fut) = upgrade::upgrade(&mut req).unwrap();
             num_clients.fetch_add(1, Ordering::Relaxed);
 
-            let config = context.weylus_client_config.clone();
+            let config = context.koshka_client_config.clone();
             tokio::spawn(async move {
                 match fut.await {
                     Ok(ws) => {
                         let (sender, receiver) =
-                            weylus_websocket_channel(ws, semaphore_websocket_shutdown);
+                            koshka_websocket_channel(ws, semaphore_websocket_shutdown);
                         std::thread::spawn(move || {
-                            let client = WeylusClientHandler::new(
+                            let client = KoshkaClientHandler::new(
                                 sender,
                                 receiver,
                                 || {
@@ -230,7 +230,7 @@ pub struct WebServerConfig {
 
 struct Context<'a> {
     web_config: WebServerConfig,
-    weylus_client_config: WeylusClientConfig,
+    koshka_client_config: KoshkaClientConfig,
     templates: Handlebars<'a>,
 }
 
@@ -239,7 +239,7 @@ pub fn run(
     sender_startup: oneshot::Sender<WebStartUpMessage>,
     notify_shutdown: Arc<tokio::sync::Notify>,
     web_server_config: WebServerConfig,
-    weylus_client_config: WeylusClientConfig,
+    koshka_client_config: KoshkaClientConfig,
 ) -> std::thread::JoinHandle<()> {
     let mut templates = Handlebars::new();
     templates
@@ -248,7 +248,7 @@ pub fn run(
 
     let context = Context {
         web_config: web_server_config,
-        weylus_client_config,
+        koshka_client_config,
         templates,
     };
     std::thread::spawn(move || run_server(context, sender_ui, sender_startup, notify_shutdown))

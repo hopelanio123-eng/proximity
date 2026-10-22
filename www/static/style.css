@@ -137,6 +137,9 @@ input[type='range']::-webkit-slider-runnable-track, input[type="range"]::-moz-ra
 select {
     width: 15em;
 }
+#settings section input[type='text'] {
+    width: 15em;
+}
 #displayoptions {
     display: flex;
     flex-direction: row;

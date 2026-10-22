@@ -8,7 +8,7 @@ use crate::capturable::{Capturable, Geometry};
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
     Button, KeyboardEvent, KeyboardEventType, KeyboardLocation, PointerEvent, PointerEventType,
-    PointerType, Rect, WheelEvent,
+    PointerType, Rect, TextEvent, WheelEvent,
 };
 
 use crate::cerror::CError;
@@ -55,14 +55,14 @@ impl UInputDevice {
             suffix = format!(" - {}", id);
         }
         let mut err = CError::new();
-        let name_stylus = format!("Weylus Stylus{}", suffix);
+        let name_stylus = format!("KoshkaRemote Stylus{}", suffix);
         let name_stylus_c_str = CString::new(name_stylus.as_bytes()).unwrap();
         let stylus_fd = unsafe { init_uinput_stylus(name_stylus_c_str.as_ptr(), &mut err) };
         if err.is_err() {
             return Err(err);
         }
 
-        let name_mouse = format!("Weylus Mouse{}", suffix);
+        let name_mouse = format!("KoshkaRemote Mouse{}", suffix);
         let name_mouse_c_str = CString::new(name_mouse.as_bytes()).unwrap();
         let mouse_fd = unsafe { init_uinput_mouse(name_mouse_c_str.as_ptr(), &mut err) };
         if err.is_err() {
@@ -70,7 +70,7 @@ impl UInputDevice {
             return Err(err);
         }
 
-        let name_touch = format!("Weylus Touch{}", suffix);
+        let name_touch = format!("KoshkaRemote Touch{}", suffix);
         let name_touch_c_str = CString::new(name_touch.as_bytes()).unwrap();
         let touch_fd = unsafe { init_uinput_touch(name_touch_c_str.as_ptr(), &mut err) };
         if err.is_err() {
@@ -81,7 +81,7 @@ impl UInputDevice {
             return Err(err);
         }
 
-        let name_keyboard = format!("Weylus Keyboard{}", suffix);
+        let name_keyboard = format!("KoshkaRemote Keyboard{}", suffix);
         let name_keyboard_c_str = CString::new(name_keyboard.as_bytes()).unwrap();
         let keyboard_fd = unsafe { init_uinput_keyboard(name_keyboard_c_str.as_ptr(), &mut err) };
         if err.is_err() {
@@ -904,6 +904,61 @@ impl InputDevice for UInputDevice {
 
         self.send(self.keyboard_fd, ET_KEY, key_code, state);
         self.send(self.keyboard_fd, ET_SYNC, EC_SYNC_REPORT, 0);
+    }
+
+    fn send_text_event(&mut self, event: &TextEvent) {
+        use crate::input::uinput_keys::*;
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        // Insert unicode characters directly using CTRL + SHIFT + U + the codes
+        // of the unicode codepoint written as hex, the same technique is used
+        // for unknown keyboard events above.
+        for c in event.text.chars() {
+            let hex = format!("{:X}", c as u32);
+            if hex.len() > 6 {
+                warn!("Unsupported unicode codepoint: {}", c);
+                continue;
+            }
+            debug!("Inserting unicode codepoint {} using ctrl + shift + u.", c);
+            self.send(self.keyboard_fd, ET_KEY, KEY_LEFTCTRL, 1);
+            self.send(self.keyboard_fd, ET_KEY, KEY_LEFTSHIFT, 1);
+            self.send(self.keyboard_fd, ET_KEY, KEY_U, 1);
+            self.send(self.keyboard_fd, ET_SYNC, EC_SYNC_REPORT, 0);
+            for d in hex.chars() {
+                let key_code = match d {
+                    '0' => KEY_0,
+                    '1' => KEY_1,
+                    '2' => KEY_2,
+                    '3' => KEY_3,
+                    '4' => KEY_4,
+                    '5' => KEY_5,
+                    '6' => KEY_6,
+                    '7' => KEY_7,
+                    '8' => KEY_8,
+                    '9' => KEY_9,
+                    'a' | 'A' => KEY_A,
+                    'b' | 'B' => KEY_B,
+                    'c' | 'C' => KEY_C,
+                    'd' | 'D' => KEY_D,
+                    'e' | 'E' => KEY_E,
+                    'f' | 'F' => KEY_F,
+                    _ => {
+                        warn!("Invalid hex digit: {}", d);
+                        continue;
+                    }
+                };
+                self.send(self.keyboard_fd, ET_KEY, key_code, 1);
+                self.send(self.keyboard_fd, ET_SYNC, EC_SYNC_REPORT, 0);
+                self.send(self.keyboard_fd, ET_KEY, key_code, 0);
+                self.send(self.keyboard_fd, ET_SYNC, EC_SYNC_REPORT, 0);
+            }
+            self.send(self.keyboard_fd, ET_KEY, KEY_U, 0);
+            self.send(self.keyboard_fd, ET_KEY, KEY_LEFTSHIFT, 0);
+            self.send(self.keyboard_fd, ET_KEY, KEY_LEFTCTRL, 0);
+            self.send(self.keyboard_fd, ET_SYNC, EC_SYNC_REPORT, 0);
+        }
     }
 
     fn set_capturable(&mut self, capturable: Box<dyn Capturable>) {

@@ -39,8 +39,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let mut wind = Window::default()
         .with_size(660, 600)
         .center_screen()
-        .with_label(&format!("Weylus - {}", env!("CARGO_PKG_VERSION")));
-    wind.set_xclass("weylus");
+        .with_label(&format!("KoshkaRemote - {}", env!("CARGO_PKG_VERSION")));
+    wind.set_xclass("koshkaremote");
     wind.set_callback(move |_win| app.quit());
 
     let mut input_access_code = Input::default()
@@ -49,8 +49,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_label("Access code");
     input_access_code.set_tooltip(
         "Restrict who can control your computer with an access code. Note that this does NOT do \
-        any kind of encryption and it is advised to only run Weylus inside trusted networks! Do \
-        NOT reuse any of your passwords! If left blank, no code is required to access Weylus \
+        any kind of encryption and it is advised to only run KoshkaRemote inside trusted networks! Do \
+        NOT reuse any of your passwords! If left blank, no code is required to access KoshkaRemote \
         remotely.",
     );
     if let Some(code) = config.access_code.as_ref() {
@@ -73,7 +73,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_size(70, height)
         .below_of(&input_port, padding + 5)
         .with_label("Auto Start");
-    check_auto_start.set_tooltip("Start Weylus server immediately on program start.");
+    check_auto_start.set_tooltip("Start KoshkaRemote server immediately on program start.");
     check_auto_start.set_checked(config.auto_start);
 
     #[cfg(target_os = "linux")]
@@ -190,7 +190,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         }
     });
 
-    let mut weylus = crate::weylus::Weylus::new();
+    let mut koshkaremote = crate::koshkaremote::KoshkaRemote::new();
     let mut is_server_running = false;
     let auto_start = config.auto_start;
     let config = Arc::new(Mutex::new(config.clone()));
@@ -243,15 +243,15 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                         config.try_mediafoundation = check_native_hw_accel.is_checked();
                     }
                 }
-                if !weylus.start(&config, |message| match message {
+                if !koshkaremote.start(&config, |message| match message {
                     UInputInaccessible => awake_callback(move || {
                         let w = 500;
                         let h = 300;
                         let mut pop_up = Window::default()
                             .with_size(w, h)
                             .center_screen()
-                            .with_label("Weylus - UInput inaccessible!");
-                        pop_up.set_xclass("weylus");
+                            .with_label("KoshkaRemote - UInput inaccessible!");
+                        pop_up.set_xclass("koshkaremote");
 
                         let buf = TextBuffer::default();
                         let mut pop_up_text = TextDisplay::default().with_size(w, h);
@@ -358,7 +358,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                 output_server_addr.show();
                 but.set_label("Stop");
             } else {
-                weylus.stop();
+                koshkaremote.stop();
                 but.set_label("Start");
                 output_server_addr.hide();
                 qr_frame.resize_callback(|_, _, _, _, _| {});

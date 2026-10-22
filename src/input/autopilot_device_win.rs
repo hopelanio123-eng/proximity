@@ -7,7 +7,7 @@ use tracing::warn;
 use crate::input::autopilot_device::AutoPilotDevice;
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
-    Button, KeyboardEvent, PointerEvent, PointerEventType, PointerType, WheelEvent,
+    Button, KeyboardEvent, PointerEvent, PointerEventType, PointerType, TextEvent, WheelEvent,
 };
 
 use crate::capturable::{Capturable, Geometry};
@@ -215,6 +215,62 @@ impl InputDevice for WindowsInput {
 
     fn send_keyboard_event(&mut self, event: &KeyboardEvent) {
         self.autopilot_device.send_keyboard_event(event);
+    }
+
+    fn send_text_event(&mut self, event: &TextEvent) {
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        // Batch all down and up events into separate SendInput calls. This is
+        // also the recommended way to send surrogate pairs: both code units of
+        // a grapheme cluster are injected before being released again.
+        let code_points: Vec<u16> = event.text.encode_utf16().collect();
+        let mut downs = Vec::<INPUT>::with_capacity(code_points.len());
+        let mut ups = Vec::<INPUT>::with_capacity(code_points.len());
+        for &code_point in code_points.iter() {
+            let mut down: INPUT = unsafe { std::mem::zeroed() };
+            down.type_ = INPUT_KEYBOARD;
+            unsafe {
+                down.u.ki_mut().wScan = code_point;
+                down.u.ki_mut().dwFlags = KEYEVENTF_UNICODE;
+            }
+            let mut up: INPUT = unsafe { std::mem::zeroed() };
+            up.type_ = INPUT_KEYBOARD;
+            unsafe {
+                up.u.ki_mut().wScan = code_point;
+                up.u.ki_mut().dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+            }
+            downs.push(down);
+            ups.push(up);
+        }
+        if downs.is_empty() {
+            return;
+        }
+        let sent_down = unsafe {
+            SendInput(
+                downs.len() as u32,
+                downs.as_mut_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            )
+        };
+        let sent_up = unsafe {
+            SendInput(
+                ups.len() as u32,
+                ups.as_mut_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            )
+        };
+        if sent_down != downs.len() as u32 || sent_up != ups.len() as u32 {
+            warn!(
+                "SendInput was blocked from injecting all key events ({}/{} down, {}/{} up), \
+                buffers may not have been typed fully",
+                sent_down,
+                downs.len(),
+                sent_up,
+                ups.len()
+            );
+        }
     }
 
     fn set_capturable(&mut self, capturable: Box<dyn Capturable>) {

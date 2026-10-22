@@ -5,14 +5,14 @@ use tracing::error;
 use crate::config::Config;
 use crate::video::EncoderOptions;
 use crate::web::{Web2UiMessage, WebServerConfig, WebStartUpMessage};
-use crate::websocket::WeylusClientConfig;
+use crate::websocket::KoshkaClientConfig;
 
-pub struct Weylus {
+pub struct KoshkaRemote {
     notify_shutdown: Arc<tokio::sync::Notify>,
     web_thread: Option<std::thread::JoinHandle<()>>,
 }
 
-impl Weylus {
+impl KoshkaRemote {
     pub fn new() -> Self {
         Self {
             notify_shutdown: Arc::new(tokio::sync::Notify::new()),
@@ -66,7 +66,7 @@ impl Weylus {
                 #[cfg(not(target_os = "linux"))]
                 enable_custom_input_areas: false,
             },
-            WeylusClientConfig {
+            KoshkaClientConfig {
                 encoder_options,
                 #[cfg(target_os = "linux")]
                 wayland_support: config.wayland_support,
@@ -113,7 +113,7 @@ impl Weylus {
     }
 }
 
-impl Drop for Weylus {
+impl Drop for KoshkaRemote {
     fn drop(&mut self) {
         self.stop();
     }

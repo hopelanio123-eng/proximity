@@ -6,7 +6,7 @@ use autopilot::screen::size as screen_size;
 use tracing::warn;
 
 use crate::input::device::{InputDevice, InputDeviceType};
-use crate::protocol::{Button, KeyboardEvent, KeyboardEventType, PointerEvent, WheelEvent};
+use crate::protocol::{Button, KeyboardEvent, KeyboardEventType, PointerEvent, TextEvent, WheelEvent};
 
 use crate::capturable::{Capturable, Geometry};
 
@@ -154,6 +154,19 @@ impl InputDevice for AutoPilotDevice {
                     autopilot::key::toggle(&Character(c), state, &flags, 0);
                 }
             }
+        }
+    }
+
+    fn send_text_event(&mut self, event: &TextEvent) {
+        use autopilot::key::Character;
+
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        for c in event.text.chars() {
+            autopilot::key::toggle(&Character(c), true, &[], 0);
+            autopilot::key::toggle(&Character(c), false, &[], 0);
         }
     }
 

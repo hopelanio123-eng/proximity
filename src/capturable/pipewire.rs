@@ -402,13 +402,13 @@ fn select_devices(
     let t: usize = rand::random();
     args.insert(
         "handle_token".to_string(),
-        Variant(Box::new(format!("weylus{t}"))),
+        Variant(Box::new(format!("koshkaremote{t}"))),
     );
 
     // TODO
     //args.insert(
     //    "restore_token".to_string(),
-    //    Variant(Box::new(format!("weylus{t}"))),
+    //    Variant(Box::new(format!("koshkaremote{t}"))),
     //);
 
     // persist modes:
@@ -442,7 +442,7 @@ fn select_sources(
     let t: usize = rand::random();
     args.insert(
         "handle_token".to_string(),
-        Variant(Box::new(format!("weylus{t}"))),
+        Variant(Box::new(format!("koshkaremote{t}"))),
     );
     // https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html#org-freedesktop-portal-screencast-selectsources
     // allow multiple sources
@@ -490,7 +490,7 @@ fn on_select_sources_response(
     let t: usize = rand::random();
     args.insert(
         "handle_token".to_string(),
-        Variant(Box::new(format!("weylus{t}"))),
+        Variant(Box::new(format!("koshkaremote{t}"))),
     );
     let path = if context.lock().unwrap().has_remote_desktop {
         OrgFreedesktopPortalRemoteDesktop::start(
@@ -563,11 +563,11 @@ fn request_remote_desktop(
     let t2: usize = rand::random();
     args.insert(
         "session_handle_token".to_string(),
-        Variant(Box::new(format!("weylus{t1}"))),
+        Variant(Box::new(format!("koshkaremote{t1}"))),
     );
     args.insert(
         "handle_token".to_string(),
-        Variant(Box::new(format!("weylus{t2}"))),
+        Variant(Box::new(format!("koshkaremote{t2}"))),
     );
     let path = if has_remote_desktop {
         OrgFreedesktopPortalRemoteDesktop::create_session(&portal, args)?

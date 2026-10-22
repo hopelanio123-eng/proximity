@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+﻿use std::ffi::CStr;
 use std::io::Write;
 use std::os::raw::c_char;
 use std::sync::mpsc;
@@ -45,7 +45,7 @@ pub fn get_log_level() -> tracing::Level {
     #[cfg(not(debug_assertions))]
     let mut level = tracing::Level::INFO;
 
-    if let Ok(var) = std::env::var("WEYLUS_LOG_LEVEL") {
+    if let Ok(var) = std::env::var("KOSHKA_LOG_LEVEL") {
         let l: Result<tracing::Level, _> = var.parse();
         if let Ok(l) = l {
             level = l;
@@ -55,7 +55,7 @@ pub fn get_log_level() -> tracing::Level {
 }
 
 pub fn setup_logging(sender: mpsc::SyncSender<String>) {
-    if std::env::var("WEYLUS_LOG_JSON").is_ok() {
+    if std::env::var("KOSHKA_LOG_JSON").is_ok() {
         let logger = tracing_subscriber::fmt()
             .json()
             .with_max_level(get_log_level())

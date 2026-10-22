@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 
 <head>
@@ -6,7 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Weylus</title>
+    <title>KoshkaRemote</title>
     <link rel="stylesheet" href="style.css">
     <script src="lib.js"></script>
     <script>
@@ -21,7 +21,7 @@
         <div id="debug_overlay" class="hide"></div>
     </main>
     <div id="settings">
-        <div id="handle">⠿</div>
+        <div id="handle">в ї</div>
         <div id="settings_scroll">
             <h2>Settings</h2>
             <section>
@@ -62,6 +62,12 @@
                 <label {{#if (not enable_custom_input_areas)}}class="hide" {{/if}}><input type="checkbox"
                         id="enable_custom_input_areas" /> <span>Enable Custom Input
                         Area</span></label>
+                <button id="toggle_softkb">Toggle Keyboard</button>
+            </section>
+            <section id="softkb_section" class="hide">
+                <label>Keyboard text: <br><input type="text" id="softkb_input" autocapitalize="off" autocomplete="off"
+                        autocorrect="off" spellcheck="false" /><br><span>Tap here to open the keyboard on your
+                        device. Typed text is sent to the computer.</span></label>
             </section>
             <section {{#if (not uinput_enabled)}}class="hide" {{/if}}>
                 <label><span>Client Name:</span><br><input type="text" id="client_name" /><br><span>Optional, useful to

@@ -894,6 +894,93 @@ class KeyboardHandler {
     }
 }
 
+class SoftKeyboard {
+    webSocket: WebSocket;
+    section: HTMLElement;
+    input: HTMLInputElement;
+    toggleButton: HTMLButtonElement;
+    enabled: boolean;
+
+    constructor(webSocket: WebSocket) {
+        this.webSocket = webSocket;
+        this.section = document.getElementById("softkb_section");
+        this.input = document.getElementById("softkb_input") as HTMLInputElement;
+        this.toggleButton = document.getElementById("toggle_softkb") as HTMLButtonElement;
+        this.enabled = false;
+
+        this.toggleButton.onclick = (e) => {
+            e.stopPropagation();
+            this.enabled = !this.enabled;
+            this.section.classList.toggle("hide", !this.enabled);
+            if (this.enabled) {
+                this.input.focus();
+            } else {
+                this.input.blur();
+                this.input.value = "";
+            }
+        };
+
+        // Do not let the global KeyboardHandler consume keys typed into this
+        // input, otherwise they would be sent twice.
+        this.input.onkeydown = (e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") {
+                this.send_special_key("Enter");
+                // blur on mobile keyboards pressing "done" often closes the
+                // keyboard otherwise
+                this.input.value = "";
+                return false;
+            }
+            return true;
+        };
+
+        // On mobile devices soft keyboards do not emit proper key events, so
+        // the only reliable way to receive text input is via the
+        // beforeinput/input events of a text field.
+        this.input.addEventListener("beforeinput", (e) => {
+            const event = e as InputEvent;
+            switch (event.inputType) {
+                case "insertText":
+                    if (event.data && event.data.length > 0) {
+                        this.send_text(event.data);
+                    }
+                    break;
+                case "insertLineBreak":
+                case "insertParagraph":
+                    this.send_special_key("Enter");
+                    break;
+                case "deleteContentBackward":
+                case "deleteWordBackward":
+                    this.send_special_key("Backspace");
+                    break;
+                default:
+                    // Ignore other input methods like dragging & dropping or
+                    // pasting as these can not be translated reliably here.
+                    break;
+            }
+            // keep the field always empty, it is only used to funnel keystrokes
+            this.input.value = "";
+        });
+        // prevent revealing the settings section toggle when tapping the input
+        this.input.onclick = (e) => e.stopPropagation();
+    }
+
+    send_text(text: string) {
+        this.webSocket.send(JSON.stringify({ "TextEvent": { "text": text } }));
+    }
+
+    send_special_key(code: string) {
+        // location 0 = standard, modifiers are never active here
+        const key = {
+            event_type: "down", code: code, key: code, location: 0,
+            alt: false, ctrl: false, shift: false, meta: false,
+        };
+        this.webSocket.send(JSON.stringify({ "KeyboardEvent": key }));
+        key.event_type = "up";
+        this.webSocket.send(JSON.stringify({ "KeyboardEvent": key }));
+    }
+}
+
 function frame_rate_stats() {
     let t = performance.now();
     let fps = Math.round(frame_count / (t - last_fps_calc) * 10000) / 10;
@@ -1090,6 +1177,7 @@ function init() {
         if (!is_connected) {
             new KeyboardHandler(webSocket);
             new PointerHandler(webSocket);
+            new SoftKeyboard(webSocket);
             is_connected = true;
         }
     },

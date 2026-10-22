@@ -1,10 +1,10 @@
 [package]
-name = "weylus"
+name = "koshkaremote"
 version = "0.11.4"
 authors = ["HMH <henry@freedesk.net>"]
 license = "AGPL-3.0-or-later"
 edition = "2021"
-description = "Use your iPad or Android tablet as graphic tablet."
+description = "Control your PC from your phone's browser with touch and keyboard. Fork of Weylus."
 
 [dependencies]
 autopilot = { git = "https://github.com/H-M-H/autopilot-rs.git", rev = "63eed09c715bfb665bb23172a3930a528e11691c" }
@@ -35,7 +35,7 @@ tracing-subscriber = { version = "^0.3", features = ["ansi", "json"], default-fe
 url = "^2.5"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.9", features = ["d3d11", "d3dcommon", "dxgi", "dxgi1_2", "dxgitype"] }
+winapi = { version = "0.3.9", features = ["d3d11", "d3dcommon", "dxgi", "dxgi1_2", "dxgitype", "winuser"] }
 wio = "0.2.2"
 captrs = "^0.3.1"
 
@@ -62,17 +62,17 @@ ffmpeg-system = []
 va-static = []
 
 [package.metadata.bundle]
-name = "Weylus"
-identifier = "io.github.h-m-h.weylus"
+name = "KoshkaRemote"
+identifier = "io.github.hopelanio.koshkaremote"
 
 [package.metadata.deb]
-name = "Weylus"
+name = "KoshkaRemote"
 section = "graphics"
 priority = "optional"
 assets = [
-    ["target/release/weylus", "usr/bin/weylus", "755"],
-    ["weylus.desktop", "usr/share/applications/weylus.desktop", "755"],
-    ["Readme.md", "usr/share/doc/weylus/README", "644"],
+    ["target/release/koshkaremote", "usr/bin/koshkaremote", "755"],
+    ["koshkaremote.desktop", "usr/share/applications/koshkaremote.desktop", "755"],
+    ["Readme.md", "usr/share/doc/koshkaremote/README", "644"],
 ]
 
 [profile.release]

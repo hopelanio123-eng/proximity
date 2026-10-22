@@ -27,7 +27,7 @@ mod protocol;
 mod video;
 mod web;
 mod websocket;
-mod weylus;
+mod koshkaremote;
 
 fn main() {
     let (sender, receiver) = mpsc::sync_channel::<String>(100);
@@ -40,7 +40,7 @@ fn main() {
         generate(
             shell,
             &mut Config::command(),
-            "weylus",
+            "koshkaremote",
             &mut std::io::stdout(),
         );
         return;
@@ -78,8 +78,8 @@ fn main() {
     }
 
     if conf.no_gui {
-        let mut weylus = crate::weylus::Weylus::new();
-        weylus.start(&conf, |msg| match msg {
+        let mut koshkaremote = crate::koshkaremote::KoshkaRemote::new();
+        koshkaremote.start(&conf, |msg| match msg {
             web::Web2UiMessage::UInputInaccessible => {
                 warn!(std::include_str!("strings/uinput_error.txt"))
             }
@@ -102,7 +102,7 @@ fn main() {
                         std::process::exit(1);
                     }
                 });
-                weylus.stop();
+                koshkaremote.stop();
                 break;
             }
         }
