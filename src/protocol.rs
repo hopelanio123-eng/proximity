@@ -196,12 +196,12 @@ pub struct WheelEvent {
     pub timestamp: u64,
 }
 
-pub trait KoshkaSender {
+pub trait ProximitySender {
     type Error: std::error::Error;
     fn send_message(&mut self, message: MessageOutbound) -> Result<(), Self::Error>;
     fn send_video(&mut self, bytes: &[u8]) -> Result<(), Self::Error>;
 }
 
-pub trait KoshkaReceiver: Iterator<Item = Result<MessageInbound, Self::Error>> {
+pub trait ProximityReceiver: Iterator<Item = Result<MessageInbound, Self::Error>> {
     type Error: std::error::Error;
 }

@@ -1,5 +1,5 @@
 [package]
-name = "koshkaremote"
+name = "proximity"
 version = "0.11.4"
 authors = ["HMH <henry@freedesk.net>"]
 license = "AGPL-3.0-or-later"
@@ -62,17 +62,17 @@ ffmpeg-system = []
 va-static = []
 
 [package.metadata.bundle]
-name = "KoshkaRemote"
-identifier = "io.github.hopelanio.koshkaremote"
+name = "Proximity"
+identifier = "io.github.hopelanio.proximity"
 
 [package.metadata.deb]
-name = "KoshkaRemote"
+name = "Proximity"
 section = "graphics"
 priority = "optional"
 assets = [
-    ["target/release/koshkaremote", "usr/bin/koshkaremote", "755"],
-    ["koshkaremote.desktop", "usr/share/applications/koshkaremote.desktop", "755"],
-    ["Readme.md", "usr/share/doc/koshkaremote/README", "644"],
+    ["target/release/proximity", "usr/bin/proximity", "755"],
+    ["proximity.desktop", "usr/share/applications/proximity.desktop", "755"],
+    ["Readme.md", "usr/share/doc/proximity/README", "644"],
 ]
 
 [profile.release]

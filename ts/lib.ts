@@ -1,4 +1,4 @@
-interface Window {
+﻿interface Window {
     ManagedMediaSource: any;
 }
 
@@ -912,6 +912,9 @@ class SoftKeyboard {
             e.stopPropagation();
             this.enabled = !this.enabled;
             this.section.classList.toggle("hide", !this.enabled);
+            this.toggleButton.classList.toggle("active", this.enabled);
+            (this.toggleButton.querySelector(".softkb-label") as HTMLElement).textContent =
+                this.enabled ? "Hide Keyboard" : "Keyboard";
             if (this.enabled) {
                 this.input.focus();
             } else {

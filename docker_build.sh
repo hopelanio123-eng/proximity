@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env sh
+#!/usr/bin/env sh
 
 set -ex
 
@@ -12,8 +12,8 @@ cargo build --target x86_64-pc-windows-gnu --release
 cargo deb -- --features=va-static
 
 # check if installing works
-dpkg -i target/debian/KoshkaRemote*.deb
-cp target/release/koshkaremote target/release/koshkaremote_va_static
+dpkg -i target/debian/Proximity*.deb
+cp target/release/proximity target/release/proximity_va_static
 
 # build version with dynamic libva
 cargo build --release
@@ -25,15 +25,15 @@ PKGDIR="$PWD/packages"
 # package windows
 (
   cd target/x86_64-pc-windows-gnu/release/
-  zip koshkaremote-windows.zip koshkaremote.exe
-  mv koshkaremote-windows.zip "$PKGDIR/"
+  zip proximity-windows.zip proximity.exe
+  mv proximity-windows.zip "$PKGDIR/"
 )
 
 # package linux
 (
-  cp target/debian/KoshkaRemote*.deb "$PKGDIR/"
-  cp koshkaremote.desktop target/release/
+  cp target/debian/Proximity*.deb "$PKGDIR/"
+  cp proximity.desktop target/release/
   cd target/release/
-  zip koshkaremote-linux.zip koshkaremote koshkaremote_va_static koshkaremote.desktop
-  mv koshkaremote-linux.zip "$PKGDIR/"
+  zip proximity-linux.zip proximity proximity_va_static proximity.desktop
+  mv proximity-linux.zip "$PKGDIR/"
 )

@@ -1,10 +1,10 @@
-﻿[Desktop Entry]
+[Desktop Entry]
 Type=Application
-Name=KoshkaRemote
+Name=Proximity
 Comment=Control your computer from your tablet or phone's browser.
-TryExec=koshkaremote
-Exec=koshkaremote
+TryExec=proximity
+Exec=proximity
 Terminal=false
 Icon=input-tablet
 Categories=Office;Graphics;Education;Presentation;
-StartupWMClass=koshkaremote
+StartupWMClass=proximity

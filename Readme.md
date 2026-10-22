@@ -1,9 +1,9 @@
-﻿# KoshkaRemote
+# Proximity
 
 Control your PC from any device with a web browser — touch, stylus, mouse and a
 **working on-screen keyboard** on your phone.
 
-KoshkaRemote is an AGPL-3.0 fork of
+Proximity is an AGPL-3.0 fork of
 [Weylus](https://github.com/H-M-H/Weylus) by H-M-H with additional features.
 
 ## What was added compared to upstream Weylus
@@ -22,7 +22,7 @@ KoshkaRemote is an AGPL-3.0 fork of
 
 ## Usage
 
-1. Start KoshkaRemote on the PC and press **Start** (web port 1701, websocket
+1. Start Proximity on the PC and press **Start** (web port 1701, websocket
    port 9001 by default, bind address `0.0.0.0`).
 2. On your phone/tablet open `http://<PC-IP>:1701` in the browser (same local
    network). A QR code is shown in the GUI for convenience.
@@ -44,7 +44,7 @@ Easiest is the bundled GitHub Actions workflow (manual `workflow_dispatch`):
 it builds the Windows binary (mingw cross-compile), the Linux binary and a deb
 inside the official `hhmhh/weylus_build:latest` container and uploads artifacts.
 
-Log level can be tuned with the `KOSHKA_LOG_LEVEL` and `KOSHKA_LOG_JSON`
+Log level can be tuned with the `PROXIMITY_LOG_LEVEL` and `PROXIMITY_LOG_JSON`
 environment variables.
 
 ## License

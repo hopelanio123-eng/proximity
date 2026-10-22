@@ -55,14 +55,14 @@ impl UInputDevice {
             suffix = format!(" - {}", id);
         }
         let mut err = CError::new();
-        let name_stylus = format!("KoshkaRemote Stylus{}", suffix);
+        let name_stylus = format!("Proximity Stylus{}", suffix);
         let name_stylus_c_str = CString::new(name_stylus.as_bytes()).unwrap();
         let stylus_fd = unsafe { init_uinput_stylus(name_stylus_c_str.as_ptr(), &mut err) };
         if err.is_err() {
             return Err(err);
         }
 
-        let name_mouse = format!("KoshkaRemote Mouse{}", suffix);
+        let name_mouse = format!("Proximity Mouse{}", suffix);
         let name_mouse_c_str = CString::new(name_mouse.as_bytes()).unwrap();
         let mouse_fd = unsafe { init_uinput_mouse(name_mouse_c_str.as_ptr(), &mut err) };
         if err.is_err() {
@@ -70,7 +70,7 @@ impl UInputDevice {
             return Err(err);
         }
 
-        let name_touch = format!("KoshkaRemote Touch{}", suffix);
+        let name_touch = format!("Proximity Touch{}", suffix);
         let name_touch_c_str = CString::new(name_touch.as_bytes()).unwrap();
         let touch_fd = unsafe { init_uinput_touch(name_touch_c_str.as_ptr(), &mut err) };
         if err.is_err() {
@@ -81,7 +81,7 @@ impl UInputDevice {
             return Err(err);
         }
 
-        let name_keyboard = format!("KoshkaRemote Keyboard{}", suffix);
+        let name_keyboard = format!("Proximity Keyboard{}", suffix);
         let name_keyboard_c_str = CString::new(name_keyboard.as_bytes()).unwrap();
         let keyboard_fd = unsafe { init_uinput_keyboard(name_keyboard_c_str.as_ptr(), &mut err) };
         if err.is_err() {

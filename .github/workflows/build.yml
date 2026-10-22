@@ -1,4 +1,4 @@
-﻿name: Build
+name: Build
 
 on:
   workflow_dispatch:
@@ -16,15 +16,15 @@ jobs:
     - name: Upload Windows build
       uses: actions/upload-artifact@v6
       with:
-        name: koshkaremote-windows
-        path: packages/koshkaremote-windows.zip
+        name: proximity-windows
+        path: packages/proximity-windows.zip
     - name: Upload Linux build
       uses: actions/upload-artifact@v6
       with:
-        name: koshkaremote-linux
-        path: packages/koshkaremote-linux.zip
+        name: proximity-linux
+        path: packages/proximity-linux.zip
     - name: Upload Linux deb
       uses: actions/upload-artifact@v6
       with:
-        name: koshkaremote-deb
-        path: packages/KoshkaRemote*.deb
+        name: proximity-deb
+        path: packages/Proximity*.deb

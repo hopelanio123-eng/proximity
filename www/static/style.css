@@ -210,3 +210,57 @@ label input:disabled + span {
 #debug_overlay span.updated {
     color: darkgreen;
 }
+
+#settings section button {
+    padding: 0.45em 0.6em;
+    border-radius: 0.3em;
+    border: 1px solid var(--background-color-2);
+    background: var(--background-color-2);
+    color: var(--color);
+    cursor: pointer;
+}
+
+#toggle_softkb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45em;
+    width: 100%;
+    padding: 0.6em 0.8em;
+    margin-top: 0.7em;
+    font-weight: 600;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+#toggle_softkb svg {
+    flex: none;
+}
+
+#toggle_softkb.active,
+#toggle_softkb.active:hover {
+    color: #fff;
+    background-color: #00aaff;
+    border-color: #00aaff;
+}
+
+#toggle_softkb:hover {
+    border-color: #00aaff;
+}
+
+#softkb_section label {
+    margin-top: 0.6em;
+}
+
+#softkb_section label span {
+    font-size: 0.85em;
+    opacity: 0.75;
+}
+
+#settings section input[type='text']#softkb_input {
+    margin-top: 0.4em;
+    padding: 0.45em;
+    border-radius: 0.3em;
+    border: 1px solid var(--background-color-2);
+    background: var(--background-color-2);
+    color: var(--color);
+}

@@ -27,7 +27,7 @@ mod protocol;
 mod video;
 mod web;
 mod websocket;
-mod koshkaremote;
+mod proximity;
 
 fn main() {
     let (sender, receiver) = mpsc::sync_channel::<String>(100);
@@ -40,7 +40,7 @@ fn main() {
         generate(
             shell,
             &mut Config::command(),
-            "koshkaremote",
+            "proximity",
             &mut std::io::stdout(),
         );
         return;
@@ -78,8 +78,8 @@ fn main() {
     }
 
     if conf.no_gui {
-        let mut koshkaremote = crate::koshkaremote::KoshkaRemote::new();
-        koshkaremote.start(&conf, |msg| match msg {
+        let mut proximity = crate::proximity::Proximity::new();
+        proximity.start(&conf, |msg| match msg {
             web::Web2UiMessage::UInputInaccessible => {
                 warn!(std::include_str!("strings/uinput_error.txt"))
             }
@@ -102,7 +102,7 @@ fn main() {
                         std::process::exit(1);
                     }
                 });
-                koshkaremote.stop();
+                proximity.stop();
                 break;
             }
         }

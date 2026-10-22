@@ -13,7 +13,7 @@ use crate::capturable::{get_capturables, Capturable, Recorder};
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
     ClientConfiguration, KeyboardEvent, MessageInbound, MessageOutbound, PointerEvent, TextEvent,
-    KoshkaReceiver, KoshkaSender, WheelEvent,
+    ProximityReceiver, ProximitySender, WheelEvent,
 };
 
 use crate::cerror::CErrorCode;
@@ -36,21 +36,21 @@ enum VideoCommands {
 
 fn send_message<S>(sender: &mut S, message: MessageOutbound)
 where
-    S: KoshkaSender,
+    S: ProximitySender,
 {
     if let Err(err) = sender.send_message(message) {
         warn!("Failed to send message to client: {err}");
     }
 }
 
-pub struct KoshkaClientHandler<S, R, FnUInput> {
+pub struct ProximityClientHandler<S, R, FnUInput> {
     sender: S,
     receiver: Option<R>,
     video_sender: mpsc::Sender<VideoCommands>,
     input_device: Option<Box<dyn InputDevice>>,
     capturables: Vec<Box<dyn Capturable>>,
     on_uinput_inaccessible: FnUInput,
-    config: KoshkaClientConfig,
+    config: ProximityClientConfig,
     #[cfg(target_os = "linux")]
     capture_cursor: bool,
     client_name: Option<String>,
@@ -58,23 +58,23 @@ pub struct KoshkaClientHandler<S, R, FnUInput> {
 }
 
 #[derive(Clone, Copy)]
-pub struct KoshkaClientConfig {
+pub struct ProximityClientConfig {
     pub encoder_options: EncoderOptions,
     #[cfg(target_os = "linux")]
     pub wayland_support: bool,
     pub no_gui: bool,
 }
 
-impl<S, R, FnUInput> KoshkaClientHandler<S, R, FnUInput> {
+impl<S, R, FnUInput> ProximityClientHandler<S, R, FnUInput> {
     pub fn new(
         sender: S,
         receiver: R,
         on_uinput_inaccessible: FnUInput,
-        config: KoshkaClientConfig,
+        config: ProximityClientConfig,
     ) -> Self
     where
-        R: KoshkaReceiver,
-        S: KoshkaSender + Clone + Send + Sync + 'static,
+        R: ProximityReceiver,
+        S: ProximitySender + Clone + Send + Sync + 'static,
     {
         let (video_sender, video_receiver) = mpsc::channel::<VideoCommands>();
         let video_thread = {
@@ -101,8 +101,8 @@ impl<S, R, FnUInput> KoshkaClientHandler<S, R, FnUInput> {
 
     pub fn run(mut self)
     where
-        R: KoshkaReceiver,
-        S: KoshkaSender + Clone + Send + Sync + 'static,
+        R: ProximityReceiver,
+        S: ProximitySender + Clone + Send + Sync + 'static,
         FnUInput: Fn(),
     {
         for message in self.receiver.take().unwrap() {
@@ -157,7 +157,7 @@ impl<S, R, FnUInput> KoshkaClientHandler<S, R, FnUInput> {
 
     fn send_message(&mut self, message: MessageOutbound)
     where
-        S: KoshkaSender,
+        S: ProximitySender,
     {
         send_message(&mut self.sender, message)
     }
@@ -204,7 +204,7 @@ impl<S, R, FnUInput> KoshkaClientHandler<S, R, FnUInput> {
 
     fn send_capturable_list(&mut self)
     where
-        S: KoshkaSender,
+        S: ProximitySender,
     {
         let mut windows = Vec::<String>::new();
         self.capturables = get_capturables(
@@ -221,7 +221,7 @@ impl<S, R, FnUInput> KoshkaClientHandler<S, R, FnUInput> {
 
     fn update_config(&mut self, config: ClientConfiguration)
     where
-        S: KoshkaSender,
+        S: ProximitySender,
         FnUInput: Fn(),
     {
         let client_name_changed = if self.client_name != config.client_name {
@@ -312,7 +312,7 @@ impl<S, R, FnUInput> KoshkaClientHandler<S, R, FnUInput> {
     }
 }
 
-fn handle_video<S: KoshkaSender + Clone + 'static>(
+fn handle_video<S: ProximitySender + Clone + 'static>(
     receiver: mpsc::Receiver<VideoCommands>,
     mut sender: S,
     encoder_options: EncoderOptions,
@@ -452,11 +452,11 @@ fn handle_video<S: KoshkaSender + Clone + 'static>(
     }
 }
 
-pub struct WsKoshkaReceiver {
+pub struct WsProximityReceiver {
     recv: tokio::sync::mpsc::Receiver<MessageInbound>,
 }
 
-impl Iterator for WsKoshkaReceiver {
+impl Iterator for WsProximityReceiver {
     type Item = Result<MessageInbound, Infallible>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -464,7 +464,7 @@ impl Iterator for WsKoshkaReceiver {
     }
 }
 
-impl KoshkaReceiver for WsKoshkaReceiver {
+impl ProximityReceiver for WsProximityReceiver {
     type Error = Infallible;
 }
 
@@ -477,11 +477,11 @@ pub enum WsMessage {
 unsafe impl Send for WsMessage {}
 
 #[derive(Clone)]
-pub struct WsKoshkaSender {
+pub struct WsProximitySender {
     sender: tokio::sync::mpsc::Sender<WsMessage>,
 }
 
-impl KoshkaSender for WsKoshkaSender {
+impl ProximitySender for WsProximitySender {
     type Error = tokio::sync::mpsc::error::SendError<WsMessage>;
 
     fn send_message(&mut self, message: MessageOutbound) -> Result<(), Self::Error> {
@@ -494,10 +494,10 @@ impl KoshkaSender for WsKoshkaSender {
     }
 }
 
-pub fn koshka_websocket_channel(
+pub fn proximity_websocket_channel(
     websocket: WebSocket<TokioIo<Upgraded>>,
     semaphore_shutdown: Arc<tokio::sync::Semaphore>,
-) -> (WsKoshkaSender, WsKoshkaReceiver) {
+) -> (WsProximitySender, WsProximityReceiver) {
     let (rx, mut tx) = websocket.split(|ws| tokio::io::split(ws));
 
     let mut rx = FragmentCollectorRead::new(rx);
@@ -533,7 +533,7 @@ pub fn koshka_websocket_channel(
                     OpCode::Text => match serde_json::from_slice(&frame.payload) {
                         Ok(msg) => {
                             if let Err(err) = sender_inbound.send(msg).await {
-                                warn!("Failed to forward inbound message to KoshkaClientHandler: {err}.");
+                                warn!("Failed to forward inbound message to ProximityClientHandler: {err}.");
                             }
                         }
                         Err(err) => warn!("Failed to parse message: {err}"),
@@ -584,10 +584,10 @@ pub fn koshka_websocket_channel(
     });
 
     (
-        WsKoshkaSender {
+        WsProximitySender {
             sender: sender_outbound,
         },
-        WsKoshkaReceiver {
+        WsProximityReceiver {
             recv: receiver_inbound,
         },
     )

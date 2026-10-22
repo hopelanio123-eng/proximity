@@ -5,14 +5,14 @@ use tracing::error;
 use crate::config::Config;
 use crate::video::EncoderOptions;
 use crate::web::{Web2UiMessage, WebServerConfig, WebStartUpMessage};
-use crate::websocket::KoshkaClientConfig;
+use crate::websocket::ProximityClientConfig;
 
-pub struct KoshkaRemote {
+pub struct Proximity {
     notify_shutdown: Arc<tokio::sync::Notify>,
     web_thread: Option<std::thread::JoinHandle<()>>,
 }
 
-impl KoshkaRemote {
+impl Proximity {
     pub fn new() -> Self {
         Self {
             notify_shutdown: Arc::new(tokio::sync::Notify::new()),
@@ -66,7 +66,7 @@ impl KoshkaRemote {
                 #[cfg(not(target_os = "linux"))]
                 enable_custom_input_areas: false,
             },
-            KoshkaClientConfig {
+            ProximityClientConfig {
                 encoder_options,
                 #[cfg(target_os = "linux")]
                 wayland_support: config.wayland_support,
@@ -113,7 +113,7 @@ impl KoshkaRemote {
     }
 }
 
-impl Drop for KoshkaRemote {
+impl Drop for Proximity {
     fn drop(&mut self) {
         self.stop();
     }
