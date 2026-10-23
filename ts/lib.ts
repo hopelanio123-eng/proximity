@@ -901,6 +901,7 @@ class SoftKeyboard {
     input: HTMLInputElement;
     toggleButton: HTMLButtonElement;
     enabled: boolean;
+    composing: boolean;
 
     constructor(webSocket: WebSocket) {
         this.webSocket = webSocket;
@@ -943,32 +944,41 @@ class SoftKeyboard {
                 this.input.value = "";
                 return false;
             }
+            if (e.key === "Backspace" && !this.composing) {
+                // a keydown is issued for every key press including
+                // auto-repeat; the default deletion of the (usually empty)
+                // funnel field can not remove anything, so repeat presses
+                // of backspace are always forwarded exactly once each
+                this.send_special_key("Backspace");
+            }
             return true;
         };
 
         // On mobile devices soft keyboards do not emit proper key events, so
-        // the only reliable way to receive text input is via the
-        // beforeinput/input events of a text field.
-        this.input.addEventListener("beforeinput", (e) => {
-            const event = e as InputEvent;
-            switch (event.inputType) {
-                case "insertText":
-                    if (event.data && event.data.length > 0) {
-                        this.send_text(event.data);
-                    }
-                    break;
-                case "insertLineBreak":
-                case "insertParagraph":
-                    this.send_special_key("Enter");
-                    break;
-                case "deleteContentBackward":
-                case "deleteWordBackward":
-                    this.send_special_key("Backspace");
-                    break;
-                default:
-                    // Ignore other input methods like dragging & dropping or
-                    // pasting as these can not be translated reliably here.
-                    break;
+        // text is funneled through the input events of this field instead.
+        // IMPORTANT: never reset the field value from a beforeinput handler.
+        // Mutating the value synchronously while Chrome is still applying
+        // the input desynchronizes its event pipeline and after the first
+        // character no further keystrokes are reported at all. Resetting
+        // from the plain following input event is safe because programmatic
+        // value changes do not trigger additional input events.
+        // While an IME composition is running (Gboard and friends) text must
+        // not be sent either: it would be duplicated once the composing text
+        // finally commits with compositionend and its own plain input event.
+        this.composing = false;
+        this.input.addEventListener("compositionstart", () => {
+            this.composing = true;
+        });
+        this.input.addEventListener("compositionend", () => {
+            this.composing = false;
+        });
+        this.input.addEventListener("input", () => {
+            if (this.composing) {
+                return;
+            }
+            const value = this.input.value;
+            if (value.length > 0) {
+                this.send_text(value);
             }
             // keep the field always empty, it is only used to funnel keystrokes
             this.input.value = "";
