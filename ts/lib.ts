@@ -901,8 +901,8 @@ class SoftKeyboard {
     closeButton: HTMLButtonElement;
     toggleButton: HTMLButtonElement;
     enabled: boolean;
-    // text that was already forwarded from the funnel field
-    forwarded: string;
+    // content of the funnel field that was already forwarded to the host
+    committed: string;
 
     constructor(webSocket: WebSocket) {
         this.webSocket = webSocket;
@@ -911,45 +911,67 @@ class SoftKeyboard {
         this.toggleButton = document.getElementById("qk_softkb") as HTMLButtonElement;
         this.closeButton = document.getElementById("softkb_close") as HTMLButtonElement;
         this.enabled = false;
-        this.forwarded = "";
+        this.committed = "";
 
         this.toggleButton.onclick = (e) => {
             e.stopPropagation();
-            this.enabled = !this.enabled;
-            this.bar.classList.toggle("hide", !this.enabled);
-            this.toggleButton.classList.toggle("active", this.enabled);
             if (this.enabled) {
+                // Closing always goes through a blur: on mobile that is what
+                // actually dismisses the OS keyboard and the blur handler
+                // below does the rest.
+                this.input.blur();
+            } else {
+                this.enabled = true;
+                this.bar.classList.remove("hide");
+                this.toggleButton.classList.add("active");
                 this.reset_field();
                 this.input.focus();
-            } else {
-                this.input.blur();
-                this.reset_field();
             }
         };
 
         this.closeButton.onclick = (e) => {
             e.stopPropagation();
-            this.enabled = false;
-            this.bar.classList.add("hide");
-            this.toggleButton.classList.remove("active");
             this.input.blur();
-            this.reset_field();
         };
 
-        // Tapping the stream lets the focus go and closes the on-screen
-        // keyboard so the mouse becomes directly usable again.
+        // Whenever the field loses focus (close button, tapping the stream,
+        // Android dismissing the keyboard with a system gesture) the funnel
+        // is deactivated synchronously. Without this the next tap on the
+        // stream would first blur the field mid-gesture and, on iOS, after an
+        // abrupt keyboard dismissal the gestures on the stream would be
+        // swallowed completely, hence the dead mouse after closing the
+        // keyboard.
+        this.input.addEventListener("blur", () => {
+            this.deactivate();
+        });
+
+        // Tapping the stream dismisses the funnel before the raw pointer
+        // sequence is interpreted. Like remote_control this issues the blur
+        // at touchstart with preventDefault, so refocusing and the layout
+        // resize caused by the keyboard closing can not cancel the gesture
+        // and the mouse stays usable from the very first contact.
         const video = document.getElementById("video");
         if (video) {
             video.addEventListener("pointerdown", () => {
-                if (this.enabled) {
-                    this.input.blur();
-                }
+                this.dismiss_if_active();
             });
+            video.addEventListener("touchstart", (e) => {
+                if (this.dismiss_if_active()) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
         }
 
         this.input.onkeydown = (e) => {
             e.stopPropagation();
+            // keyCode 229 is Chrome's composition marker, the composed text
+            // is forwarded via its own input event after compositionend.
+            if (e.isComposing || e.keyCode === 229) {
+                return true;
+            }
             if (e.key === "Enter") {
+                e.preventDefault();
+                this.commit();
                 this.send_special_key("Enter");
                 return false;
             }
@@ -957,8 +979,9 @@ class SoftKeyboard {
             // the following input event would never fire, so backspace has to
             // be sent right here. With a non-empty field the deletion happens
             // inside the field and the input handler below forwards it via
-            // the value delta instead.
-            if (e.key === "Backspace" && !e.isComposing && this.input.value.length === 0) {
+            // the grapheme diff instead.
+            if (e.key === "Backspace" && this.input.value.length === 0) {
+                e.preventDefault();
                 this.send_special_key("Backspace");
             }
             return true;
@@ -968,8 +991,8 @@ class SoftKeyboard {
         // NEVER reset while typing: touching the value of a live field desyn-
         // chronizes mobile keyboards - Chrome stops delivering events after
         // the first character and IME compositions get lost. Instead the
-        // shown value is compared to everything that was already forwarded
-        // and only the delta is sent, the content simply keeps accumulating.
+        // shown value is grapheme-diffed against everything already forwarded
+        // and only that edit is sent, the content simply keeps accumulating.
         this.input.addEventListener("input", (e) => {
             const event = e as InputEvent;
             // While an IME composition is running (Gboard etc.) the value is
@@ -978,29 +1001,71 @@ class SoftKeyboard {
             if (event.isComposing) {
                 return;
             }
-            const value = this.input.value;
-            if (value.length > this.forwarded.length && value.startsWith(this.forwarded)) {
-                this.send_text(value.substring(this.forwarded.length));
-            } else if (value.length < this.forwarded.length && this.forwarded.startsWith(value)) {
-                const deleted = this.forwarded.length - value.length;
-                for (let i = 0; i < deleted; i++) {
-                    this.send_special_key("Backspace");
-                }
-            } else if (value !== this.forwarded) {
-                // arbitrary replacement (autocorrect etc.) - forward as-is
-                this.send_text(value);
-            }
-            this.forwarded = value;
+            this.commit();
+        });
+        this.input.addEventListener("compositionend", () => {
+            this.commit();
         });
     }
 
+    // Grapheme-aware diff of the field value against the already forwarded
+    // content, ported from remote_control's commitKeyboardComposition. The
+    // result is sent as a TextEdit: right `left` characters of the caret
+    // keep their position, `backspace` characters are deleted, `text`
+    // is inserted in place and the caret ends up `right` positions from
+    // the start of the replacement - the server applies the same recipe on
+    // the host. Insertions, deletions and arbitrary replacements (autocor-
+    // rect, swipe input, emoji picker) all resolve to the minimal edit.
+    commit() {
+        const before = split_graphemes(this.committed);
+        const after = split_graphemes(this.input.value);
+        let prefix = 0;
+        let suffix = 0;
+        while (prefix < before.length && prefix < after.length
+            && before[prefix] === after[prefix]) {
+            prefix++;
+        }
+        while (suffix < before.length - prefix && suffix < after.length - prefix
+            && before[before.length - 1 - suffix] === after[after.length - 1 - suffix]) {
+            suffix++;
+        }
+        if (prefix !== before.length || prefix !== after.length) {
+            this.send_text_edit(
+                suffix,
+                before.length - prefix - suffix,
+                after.slice(prefix, after.length - suffix).join(""),
+                suffix
+            );
+        }
+        this.committed = this.input.value;
+    }
+
+    // Blur only when the funnel field is actually focused. Returns whether
+    // an active funnel was just dismissed.
+    dismiss_if_active() {
+        if (document.activeElement !== this.input) {
+            return false;
+        }
+        this.input.blur();
+        return true;
+    }
+
+    deactivate() {
+        this.enabled = false;
+        this.bar.classList.add("hide");
+        this.toggleButton.classList.remove("active");
+        this.reset_field();
+    }
+
     reset_field() {
-        this.forwarded = "";
+        this.committed = "";
         this.input.value = "";
     }
 
-    send_text(text: string) {
-        this.webSocket.send(JSON.stringify({ "TextEvent": { "text": text } }));
+    send_text_edit(left: number, backspace: number, text: string, right: number) {
+        this.webSocket.send(JSON.stringify(
+            { "TextEdit": { "left": left, "backspace": backspace, "text": text, "right": right } }
+        ));
     }
 
     send_special_key(code: string) {
@@ -1015,6 +1080,19 @@ class SoftKeyboard {
     }
 }
 
+
+// Grapheme clustering for the funnel diff. Splitting by code points alone
+// would tear apart surrogate pairs and ZWJ sequences that compose to a single
+// visible character (flags, skin toned emoji).
+function split_graphemes(text: string): string[] {
+    // Intl.Segmenter is not part of the es2020 TS lib, hence the casts.
+    const segmenter = typeof (Intl as any).Segmenter === "function"
+        ? new (Intl as any).Segmenter(undefined, { granularity: "grapheme" }) : null;
+    if (segmenter) {
+        return [...segmenter.segment(text)].map((part: any) => part.segment);
+    }
+    return Array.from(text);
+}
 
 // Floating quick action buttons rendered over the video: mouse button
 // hold-to-press buttons act at the current cursor position of the host via
