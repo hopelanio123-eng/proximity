@@ -1,4 +1,4 @@
-use winapi::shared::minwindef::DWORD;
+use winapi::shared::minwindef::{DWORD, WORD};
 use winapi::shared::windef::{HWND, POINT};
 use winapi::um::winuser::*;
 
@@ -7,7 +7,8 @@ use tracing::warn;
 use crate::input::autopilot_device::AutoPilotDevice;
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
-    Button, KeyboardEvent, PointerEvent, PointerEventType, PointerType, TextEvent, WheelEvent,
+    Button, ClickButton, ClickEvent, ClickEventType, KeyboardEvent, PointerEvent,
+    PointerEventType, PointerType, TextEvent, WheelEvent,
 };
 
 use crate::capturable::{Capturable, Geometry};
@@ -214,7 +215,64 @@ impl InputDevice for WindowsInput {
     }
 
     fn send_keyboard_event(&mut self, event: &KeyboardEvent) {
+        if event.code == "PrintScreen" {
+            self.send_print_screen(event);
+            return;
+        }
         self.autopilot_device.send_keyboard_event(event);
+    }
+
+    fn send_click_event(&mut self, event: &ClickEvent) {
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        // Injecting a button event without moving the cursor acts at its
+        // current position.
+        let flags = match event.button {
+            ClickButton::LEFT => match event.action {
+                ClickEventType::DOWN => MOUSEEVENTF_LEFTDOWN,
+                _ => MOUSEEVENTF_LEFTUP,
+            },
+            ClickButton::MIDDLE => match event.action {
+                ClickEventType::DOWN => MOUSEEVENTF_MIDDLEDOWN,
+                _ => MOUSEEVENTF_MIDDLEUP,
+            },
+            ClickButton::RIGHT => match event.action {
+                ClickEventType::DOWN => MOUSEEVENTF_RIGHTDOWN,
+                _ => MOUSEEVENTF_RIGHTUP,
+            },
+        };
+        unsafe { mouse_event(flags, 0 as u32, 0 as u32, 0, 0) };
+    }
+
+    fn send_print_screen(&mut self, event: &KeyboardEvent) {
+        if let KeyboardEventType::REPEAT = event.event_type {
+            return;
+        }
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        // Windows takes the screenshot as soon as PrintScreen is pressed, so
+        // react only to down events and inject one complete press+release of
+        // VK_SNAPSHOT.
+        if let KeyboardEventType::DOWN = event.event_type {
+            let mut down: INPUT = unsafe { std::mem::zeroed() };
+            down.type_ = INPUT_KEYBOARD;
+            down.u.ki_mut().wVk = VK_SNAPSHOT as WORD;
+            let mut up: INPUT = unsafe { std::mem::zeroed() };
+            up.type_ = INPUT_KEYBOARD;
+            up.u.ki_mut().wVk = VK_SNAPSHOT as WORD;
+            up.u.ki_mut().dwFlags = KEYEVENTF_KEYUP;
+            let mut keys = [down, up];
+            let sent = unsafe {
+                SendInput(2, keys.as_mut_ptr(), std::mem::size_of::<INPUT>() as i32)
+            };
+            if sent != 2 {
+                warn!("SendInput was blocked from injecting the PrintScreen key");
+            }
+        }
     }
 
     fn send_text_event(&mut self, event: &TextEvent) {

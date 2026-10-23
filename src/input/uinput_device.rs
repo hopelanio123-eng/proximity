@@ -7,8 +7,8 @@ use crate::capturable::x11::X11Context;
 use crate::capturable::{Capturable, Geometry};
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
-    Button, KeyboardEvent, KeyboardEventType, KeyboardLocation, PointerEvent, PointerEventType,
-    PointerType, Rect, TextEvent, WheelEvent,
+    Button, ClickButton, ClickEvent, ClickEventType, KeyboardEvent, KeyboardEventType,
+    KeyboardLocation, PointerEvent, PointerEventType, PointerType, Rect, TextEvent, WheelEvent,
 };
 
 use crate::cerror::CError;
@@ -638,6 +638,24 @@ impl InputDevice for UInputDevice {
                 self.send(self.mouse_fd, ET_SYNC, EC_SYNC_REPORT, 0);
             }
         }
+    }
+
+    fn send_click_event(&mut self, event: &ClickEvent) {
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        use crate::input::uinput_keys::*;
+        let value = match event.action {
+            ClickEventType::DOWN => 1,
+            _ => 0,
+        };
+        match event.button {
+            ClickButton::LEFT => self.send(self.mouse_fd, ET_KEY, EC_KEY_MOUSE_LEFT, value),
+            ClickButton::MIDDLE => self.send(self.mouse_fd, ET_KEY, EC_KEY_MOUSE_MIDDLE, value),
+            ClickButton::RIGHT => self.send(self.mouse_fd, ET_KEY, EC_KEY_MOUSE_RIGHT, value),
+        }
+        self.send(self.mouse_fd, ET_SYNC, EC_SYNC_REPORT, 0);
     }
 
     fn send_keyboard_event(&mut self, event: &KeyboardEvent) {

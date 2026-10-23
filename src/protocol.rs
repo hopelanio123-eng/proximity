@@ -18,6 +18,7 @@ pub enum MessageInbound {
     WheelEvent(WheelEvent),
     KeyboardEvent(KeyboardEvent),
     TextEvent(TextEvent),
+    ClickEvent(ClickEvent),
     GetCapturableList,
     Config(ClientConfiguration),
     PauseVideo,
@@ -164,6 +165,33 @@ pub struct KeyboardEvent {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TextEvent {
     pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ClickButton {
+    #[serde(rename = "left")]
+    LEFT,
+    #[serde(rename = "middle")]
+    MIDDLE,
+    #[serde(rename = "right")]
+    RIGHT,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ClickEventType {
+    #[serde(rename = "down")]
+    DOWN,
+    #[serde(rename = "up")]
+    UP,
+}
+
+/// A mouse button press or release at the current cursor position. Used to
+/// support quick action buttons on mobile clients which can not send
+/// meaningful pointer coordinates themselves.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ClickEvent {
+    pub button: ClickButton,
+    pub action: ClickEventType,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

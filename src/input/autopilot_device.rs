@@ -6,7 +6,7 @@ use autopilot::screen::size as screen_size;
 use tracing::warn;
 
 use crate::input::device::{InputDevice, InputDeviceType};
-use crate::protocol::{Button, KeyboardEvent, KeyboardEventType, PointerEvent, TextEvent, WheelEvent};
+use crate::protocol::{Button, ClickButton, ClickEvent, ClickEventType, KeyboardEvent, KeyboardEventType, PointerEvent, TextEvent, WheelEvent};
 
 use crate::capturable::{Capturable, Geometry};
 
@@ -72,6 +72,21 @@ impl InputDevice for AutoPilotDevice {
                 mouse::toggle(mouse::Button::Right, event.buttons.contains(event.button))
             }
             _ => (),
+        }
+    }
+
+    fn send_click_event(&mut self, event: &ClickEvent) {
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        // Toggling the button without moving the cursor acts at its current
+        // position.
+        let down = matches!(event.action, ClickEventType::DOWN);
+        match event.button {
+            ClickButton::LEFT => mouse::toggle(mouse::Button::Left, down),
+            ClickButton::MIDDLE => mouse::toggle(mouse::Button::Middle, down),
+            ClickButton::RIGHT => mouse::toggle(mouse::Button::Right, down),
         }
     }
 

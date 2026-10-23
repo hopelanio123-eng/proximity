@@ -1,4 +1,4 @@
-﻿interface Window {
+interface Window {
     ManagedMediaSource: any;
 }
 
@@ -896,31 +896,40 @@ class KeyboardHandler {
 
 class SoftKeyboard {
     webSocket: WebSocket;
-    section: HTMLElement;
+    bar: HTMLElement;
+    closeButton: HTMLButtonElement;
     input: HTMLInputElement;
     toggleButton: HTMLButtonElement;
     enabled: boolean;
 
     constructor(webSocket: WebSocket) {
         this.webSocket = webSocket;
-        this.section = document.getElementById("softkb_section");
+        this.bar = document.getElementById("softkb_bar");
         this.input = document.getElementById("softkb_input") as HTMLInputElement;
-        this.toggleButton = document.getElementById("toggle_softkb") as HTMLButtonElement;
+        this.toggleButton = document.getElementById("qk_softkb") as HTMLButtonElement;
+        this.closeButton = document.getElementById("softkb_close") as HTMLButtonElement;
         this.enabled = false;
 
         this.toggleButton.onclick = (e) => {
             e.stopPropagation();
             this.enabled = !this.enabled;
-            this.section.classList.toggle("hide", !this.enabled);
+            this.bar.classList.toggle("hide", !this.enabled);
             this.toggleButton.classList.toggle("active", this.enabled);
-            (this.toggleButton.querySelector(".softkb-label") as HTMLElement).textContent =
-                this.enabled ? "Hide Keyboard" : "Keyboard";
             if (this.enabled) {
                 this.input.focus();
             } else {
                 this.input.blur();
                 this.input.value = "";
             }
+        };
+
+        this.closeButton.onclick = (e) => {
+            e.stopPropagation();
+            this.enabled = false;
+            this.bar.classList.add("hide");
+            this.toggleButton.classList.remove("active");
+            this.input.blur();
+            this.input.value = "";
         };
 
         // Do not let the global KeyboardHandler consume keys typed into this
@@ -984,6 +993,69 @@ class SoftKeyboard {
     }
 }
 
+
+// Floating quick action buttons rendered over the video: mouse button
+// hold-to-press buttons act at the current cursor position of the host via
+// ClickEvent, key buttons send full press+release KeyboardEvents and the
+// keyboard button toggles the soft keyboard bar.
+class QuickBar {
+    webSocket: WebSocket;
+
+    constructor(webSocket: WebSocket) {
+        this.webSocket = webSocket;
+
+        const hold = (id: string, button: string) => {
+            const btn = document.getElementById(id) as HTMLButtonElement;
+            btn.oncontextmenu = (e) => { e.preventDefault(); return false; };
+            btn.onpointerdown = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                btn.setPointerCapture(e.pointerId);
+                btn.classList.add("active");
+                this.send_click(button, "down");
+            };
+            const release = () => {
+                if (btn.classList.contains("active")) {
+                    btn.classList.remove("active");
+                    this.send_click(button, "up");
+                }
+            };
+            btn.onpointerup = release;
+            btn.onpointercancel = release;
+        };
+        hold("qk_lmb", "left");
+        hold("qk_pkm", "right");
+
+        const tap = (id: string, code: string) => {
+            const btn = document.getElementById(id) as HTMLButtonElement;
+            btn.oncontextmenu = (e) => { e.preventDefault(); return false; };
+            btn.onpointerdown = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.send_special_key(code);
+                btn.classList.add("active");
+                setTimeout(() => { btn.classList.remove("active"); }, 150);
+            };
+        };
+        tap("qk_f11", "F11");
+        tap("qk_prtsc", "PrintScreen");
+    }
+
+    send_click(button: string, action: string) {
+        this.webSocket.send(JSON.stringify({ "ClickEvent": { "button": button, "action": action } }));
+    }
+
+    send_special_key(code: string) {
+        // location 0 = standard, modifiers are never active here
+        const key = {
+            event_type: "down", code: code, key: code, location: 0,
+            alt: false, ctrl: false, shift: false, meta: false,
+        };
+        this.webSocket.send(JSON.stringify({ "KeyboardEvent": key }));
+        key.event_type = "up";
+        this.webSocket.send(JSON.stringify({ "KeyboardEvent": key }));
+    }
+}
 function frame_rate_stats() {
     let t = performance.now();
     let fps = Math.round(frame_count / (t - last_fps_calc) * 10000) / 10;
@@ -1181,6 +1253,7 @@ function init() {
             new KeyboardHandler(webSocket);
             new PointerHandler(webSocket);
             new SoftKeyboard(webSocket);
+            new QuickBar(webSocket);
             is_connected = true;
         }
     },

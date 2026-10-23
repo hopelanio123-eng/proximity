@@ -12,7 +12,8 @@ use tracing::{error, trace, warn};
 use crate::capturable::{get_capturables, Capturable, Recorder};
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
-    ClientConfiguration, KeyboardEvent, MessageInbound, MessageOutbound, PointerEvent, TextEvent,
+    ClientConfiguration, ClickEvent, KeyboardEvent, MessageInbound, MessageOutbound, PointerEvent,
+    TextEvent,
     ProximityReceiver, ProximitySender, WheelEvent,
 };
 
@@ -114,6 +115,7 @@ impl<S, R, FnUInput> ProximityClientHandler<S, R, FnUInput> {
                         MessageInbound::WheelEvent(event) => self.process_wheel_event(&event),
                         MessageInbound::KeyboardEvent(event) => self.process_keyboard_event(&event),
                         MessageInbound::TextEvent(event) => self.process_text_event(&event),
+                        MessageInbound::ClickEvent(event) => self.process_click_event(&event),
                         MessageInbound::GetCapturableList => self.send_capturable_list(),
                         MessageInbound::Config(config) => self.update_config(config),
                         MessageInbound::PauseVideo => {
@@ -199,6 +201,17 @@ impl<S, R, FnUInput> ProximityClientHandler<S, R, FnUInput> {
                 .send_text_event(event)
         } else {
             warn!("Input device is not initalized, can not process TextEvent!");
+        }
+    }
+
+    fn process_click_event(&mut self, event: &ClickEvent) {
+        if self.input_device.is_some() {
+            self.input_device
+                .as_mut()
+                .unwrap()
+                .send_click_event(event)
+        } else {
+            warn!("Input device is not initalized, can not process ClickEvent!");
         }
     }
 
