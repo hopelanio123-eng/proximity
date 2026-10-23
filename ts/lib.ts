@@ -918,8 +918,12 @@ class SoftKeyboard {
             if (this.enabled) {
                 // Closing always goes through a blur: on mobile that is what
                 // actually dismisses the OS keyboard and the blur handler
-                // below does the rest.
-                this.input.blur();
+                // below does the rest. If the field is not focused anymore
+                // (e.g. the keyboard was dismissed with a system gesture)
+                // blur will never fire, so deactivate directly.
+                if (!this.dismiss_if_active()) {
+                    this.deactivate();
+                }
             } else {
                 this.enabled = true;
                 this.bar.classList.remove("hide");
@@ -931,7 +935,9 @@ class SoftKeyboard {
 
         this.closeButton.onclick = (e) => {
             e.stopPropagation();
-            this.input.blur();
+            if (!this.dismiss_if_active()) {
+                this.deactivate();
+            }
         };
 
         // Whenever the field loses focus (close button, tapping the stream,
