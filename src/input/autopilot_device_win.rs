@@ -7,8 +7,8 @@ use tracing::warn;
 use crate::input::autopilot_device::AutoPilotDevice;
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
-    Button, ClickButton, ClickEvent, ClickEventType, KeyboardEvent, PointerEvent,
-    PointerEventType, PointerType, TextEvent, WheelEvent,
+    Button, ClickButton, ClickEvent, ClickEventType, KeyboardEvent, KeyboardEventType,
+    PointerEvent, PointerEventType, PointerType, TextEvent, WheelEvent,
 };
 
 use crate::capturable::{Capturable, Geometry};
@@ -31,6 +31,35 @@ impl WindowsInput {
                 pointer_device_handle: CreateSyntheticPointerDevice(PT_PEN, 1, 1),
                 touch_device_handle: CreateSyntheticPointerDevice(PT_TOUCH, 5, 1),
                 multitouch_map: std::collections::HashMap::new(),
+            }
+        }
+    }
+
+    fn send_print_screen(&mut self, event: &KeyboardEvent) {
+        if let KeyboardEventType::REPEAT = event.event_type {
+            return;
+        }
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        // Windows takes the screenshot as soon as PrintScreen is pressed, so
+        // react only to down events and inject one complete press+release of
+        // VK_SNAPSHOT.
+        if let KeyboardEventType::DOWN = event.event_type {
+            let mut down: INPUT = unsafe { std::mem::zeroed() };
+            down.type_ = INPUT_KEYBOARD;
+            down.u.ki_mut().wVk = VK_SNAPSHOT as WORD;
+            let mut up: INPUT = unsafe { std::mem::zeroed() };
+            up.type_ = INPUT_KEYBOARD;
+            up.u.ki_mut().wVk = VK_SNAPSHOT as WORD;
+            up.u.ki_mut().dwFlags = KEYEVENTF_KEYUP;
+            let mut keys = [down, up];
+            let sent = unsafe {
+                SendInput(2, keys.as_mut_ptr(), std::mem::size_of::<INPUT>() as i32)
+            };
+            if sent != 2 {
+                warn!("SendInput was blocked from injecting the PrintScreen key");
             }
         }
     }
@@ -244,35 +273,6 @@ impl InputDevice for WindowsInput {
             },
         };
         unsafe { mouse_event(flags, 0 as u32, 0 as u32, 0, 0) };
-    }
-
-    fn send_print_screen(&mut self, event: &KeyboardEvent) {
-        if let KeyboardEventType::REPEAT = event.event_type {
-            return;
-        }
-        if let Err(err) = self.capturable.before_input() {
-            warn!("Failed to activate window, sending no input ({})", err);
-            return;
-        }
-        // Windows takes the screenshot as soon as PrintScreen is pressed, so
-        // react only to down events and inject one complete press+release of
-        // VK_SNAPSHOT.
-        if let KeyboardEventType::DOWN = event.event_type {
-            let mut down: INPUT = unsafe { std::mem::zeroed() };
-            down.type_ = INPUT_KEYBOARD;
-            down.u.ki_mut().wVk = VK_SNAPSHOT as WORD;
-            let mut up: INPUT = unsafe { std::mem::zeroed() };
-            up.type_ = INPUT_KEYBOARD;
-            up.u.ki_mut().wVk = VK_SNAPSHOT as WORD;
-            up.u.ki_mut().dwFlags = KEYEVENTF_KEYUP;
-            let mut keys = [down, up];
-            let sent = unsafe {
-                SendInput(2, keys.as_mut_ptr(), std::mem::size_of::<INPUT>() as i32)
-            };
-            if sent != 2 {
-                warn!("SendInput was blocked from injecting the PrintScreen key");
-            }
-        }
     }
 
     fn send_text_event(&mut self, event: &TextEvent) {
