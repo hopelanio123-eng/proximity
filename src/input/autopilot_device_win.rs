@@ -49,11 +49,13 @@ impl WindowsInput {
         if let KeyboardEventType::DOWN = event.event_type {
             let mut down: INPUT = unsafe { std::mem::zeroed() };
             down.type_ = INPUT_KEYBOARD;
-            down.u.ki_mut().wVk = VK_SNAPSHOT as WORD;
+            unsafe { down.u.ki_mut().wVk = VK_SNAPSHOT as WORD; }
             let mut up: INPUT = unsafe { std::mem::zeroed() };
             up.type_ = INPUT_KEYBOARD;
-            up.u.ki_mut().wVk = VK_SNAPSHOT as WORD;
-            up.u.ki_mut().dwFlags = KEYEVENTF_KEYUP;
+            unsafe {
+                up.u.ki_mut().wVk = VK_SNAPSHOT as WORD;
+                up.u.ki_mut().dwFlags = KEYEVENTF_KEYUP;
+            }
             let mut keys = [down, up];
             let sent = unsafe {
                 SendInput(2, keys.as_mut_ptr(), std::mem::size_of::<INPUT>() as i32)
