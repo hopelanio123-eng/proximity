@@ -1004,27 +1004,6 @@ class QuickBar {
     constructor(webSocket: WebSocket) {
         this.webSocket = webSocket;
 
-        const hold = (id: string, button: string) => {
-            const btn = document.getElementById(id) as HTMLButtonElement;
-            btn.oncontextmenu = (e) => { e.preventDefault(); return false; };
-            btn.onpointerdown = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                btn.setPointerCapture(e.pointerId);
-                btn.classList.add("active");
-                this.send_click(button, "down");
-            };
-            const release = () => {
-                if (btn.classList.contains("active")) {
-                    btn.classList.remove("active");
-                    this.send_click(button, "up");
-                }
-            };
-            btn.onpointerup = release;
-            btn.onpointercancel = release;
-        };
-        hold("qk_lmb", "left");
-        hold("qk_pkm", "right");
 
         const tap = (id: string, code: string) => {
             const btn = document.getElementById(id) as HTMLButtonElement;
