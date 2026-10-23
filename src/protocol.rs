@@ -18,6 +18,7 @@ pub enum MessageInbound {
     WheelEvent(WheelEvent),
     KeyboardEvent(KeyboardEvent),
     TextEvent(TextEvent),
+    TextEdit(TextEdit),
     ClickEvent(ClickEvent),
     GetCapturableList,
     Config(ClientConfiguration),
@@ -165,6 +166,21 @@ pub struct KeyboardEvent {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TextEvent {
     pub text: String,
+}
+
+/// An edit applied to whatever was last inserted on the host, produced by the
+/// client by grapheme-diffing the previous and current content of its text
+/// funnel field. The caret is moved left by `left`, the replaced characters
+/// are deleted with `backspace` presses, `text` is inserted and finally the
+/// caret is restored by pressing the right arrow `right` times. Describing the
+/// delta as an edit instead of raw text keeps IME compositions, autocorrect
+/// and replacements in sync with what the phone shows.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TextEdit {
+    pub left: u32,
+    pub backspace: u32,
+    pub text: String,
+    pub right: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

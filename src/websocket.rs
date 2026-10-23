@@ -13,7 +13,7 @@ use crate::capturable::{get_capturables, Capturable, Recorder};
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
     ClientConfiguration, ClickEvent, KeyboardEvent, MessageInbound, MessageOutbound, PointerEvent,
-    TextEvent,
+    TextEdit, TextEvent,
     ProximityReceiver, ProximitySender, WheelEvent,
 };
 
@@ -115,6 +115,7 @@ impl<S, R, FnUInput> ProximityClientHandler<S, R, FnUInput> {
                         MessageInbound::WheelEvent(event) => self.process_wheel_event(&event),
                         MessageInbound::KeyboardEvent(event) => self.process_keyboard_event(&event),
                         MessageInbound::TextEvent(event) => self.process_text_event(&event),
+                        MessageInbound::TextEdit(event) => self.process_text_edit_event(&event),
                         MessageInbound::ClickEvent(event) => self.process_click_event(&event),
                         MessageInbound::GetCapturableList => self.send_capturable_list(),
                         MessageInbound::Config(config) => self.update_config(config),
@@ -201,6 +202,17 @@ impl<S, R, FnUInput> ProximityClientHandler<S, R, FnUInput> {
                 .send_text_event(event)
         } else {
             warn!("Input device is not initalized, can not process TextEvent!");
+        }
+    }
+
+    fn process_text_edit_event(&mut self, event: &TextEdit) {
+        if self.input_device.is_some() {
+            self.input_device
+                .as_mut()
+                .unwrap()
+                .send_text_edit_event(event)
+        } else {
+            warn!("Input device is not initalized, can not process TextEdit!");
         }
     }
 
