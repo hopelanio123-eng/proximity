@@ -897,10 +897,12 @@ class KeyboardHandler {
 class SoftKeyboard {
     webSocket: WebSocket;
     bar: HTMLElement;
-    closeButton: HTMLButtonElement;
     input: HTMLInputElement;
+    closeButton: HTMLButtonElement;
     toggleButton: HTMLButtonElement;
     enabled: boolean;
+    // text that was already forwarded from the funnel field
+    forwarded: string;
 
     constructor(webSocket: WebSocket) {
         this.webSocket = webSocket;
@@ -909,6 +911,7 @@ class SoftKeyboard {
         this.toggleButton = document.getElementById("qk_softkb") as HTMLButtonElement;
         this.closeButton = document.getElementById("softkb_close") as HTMLButtonElement;
         this.enabled = false;
+        this.forwarded = "";
 
         this.toggleButton.onclick = (e) => {
             e.stopPropagation();
@@ -916,10 +919,11 @@ class SoftKeyboard {
             this.bar.classList.toggle("hide", !this.enabled);
             this.toggleButton.classList.toggle("active", this.enabled);
             if (this.enabled) {
+                this.reset_field();
                 this.input.focus();
             } else {
                 this.input.blur();
-                this.input.value = "";
+                this.reset_field();
             }
         };
 
@@ -929,10 +933,8 @@ class SoftKeyboard {
             this.bar.classList.add("hide");
             this.toggleButton.classList.remove("active");
             this.input.blur();
-            this.input.value = "";
+            this.reset_field();
         };
-
-        this.wire_funnel();
 
         // Tapping the stream lets the focus go and closes the on-screen
         // keyboard so the mouse becomes directly usable again.
@@ -944,6 +946,57 @@ class SoftKeyboard {
                 }
             });
         }
+
+        this.input.onkeydown = (e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") {
+                this.send_special_key("Enter");
+                return false;
+            }
+            // When the field is empty the browser has nothing to delete and
+            // the following input event would never fire, so backspace has to
+            // be sent right here. With a non-empty field the deletion happens
+            // inside the field and the input handler below forwards it via
+            // the value delta instead.
+            if (e.key === "Backspace" && !e.isComposing && this.input.value.length === 0) {
+                this.send_special_key("Backspace");
+            }
+            return true;
+        };
+
+        // Text is funneled through the input event and the field value is
+        // NEVER reset while typing: touching the value of a live field desyn-
+        // chronizes mobile keyboards - Chrome stops delivering events after
+        // the first character and IME compositions get lost. Instead the
+        // shown value is compared to everything that was already forwarded
+        // and only the delta is sent, the content simply keeps accumulating.
+        this.input.addEventListener("input", (e) => {
+            const event = e as InputEvent;
+            // While an IME composition is running (Gboard etc.) the value is
+            // not final yet; the commit fires its own plain input event after
+            // compositionend which is used instead.
+            if (event.isComposing) {
+                return;
+            }
+            const value = this.input.value;
+            if (value.length > this.forwarded.length && value.startsWith(this.forwarded)) {
+                this.send_text(value.substring(this.forwarded.length));
+            } else if (value.length < this.forwarded.length && this.forwarded.startsWith(value)) {
+                const deleted = this.forwarded.length - value.length;
+                for (let i = 0; i < deleted; i++) {
+                    this.send_special_key("Backspace");
+                }
+            } else if (value !== this.forwarded) {
+                // arbitrary replacement (autocorrect etc.) - forward as-is
+                this.send_text(value);
+            }
+            this.forwarded = value;
+        });
+    }
+
+    reset_field() {
+        this.forwarded = "";
+        this.input.value = "";
     }
 
     send_text(text: string) {
@@ -959,80 +1012,6 @@ class SoftKeyboard {
         this.webSocket.send(JSON.stringify({ "KeyboardEvent": key }));
         key.event_type = "up";
         this.webSocket.send(JSON.stringify({ "KeyboardEvent": key }));
-    }
-    // Attaches the input funnel to the current field. After every value that
-    // was sent the field is replaced by a fresh clone: mobile IMEs stop
-    // delivering events to a field whose value was reset externally, a new
-    // node keeps the events coming while the on-screen keyboard stays open.
-    wire_funnel() {
-        const input = this.input;
-
-        // Funnel keys that mobile keyboards report as keys. A keydown fires
-        // for every key press including auto-repeat and without a running
-        // composition the outside of the (usually empty) funnel field can
-        // not delete anything, so backspace presses are forwarded exactly
-        // once each.
-        input.onkeydown = (e) => {
-            e.stopPropagation();
-            if (e.key === "Enter") {
-                this.send_special_key("Enter");
-                // blur on mobile keyboards pressing "done" often closes the
-                // keyboard otherwise
-                this.input.value = "";
-                return false;
-            }
-            if (e.key === "Backspace" && !e.isComposing) {
-                this.send_special_key("Backspace");
-            }
-            return true;
-        };
-
-        // Text, including everything typed through an IME composition, is
-        // collected from the input events. The committed value must only be
-        // sent when it is no longer composing, otherwise the composing text
-        // would be duplicated.
-        input.addEventListener("input", (e) => {
-            const event = e as InputEvent;
-            if (event.isComposing) {
-                return;
-            }
-            const value = this.input.value;
-            if (value.length > 0) {
-                this.send_text(value);
-            }
-            // The field is re-created instead of having its value reset
-            // directly: mutating the value of the current node (particularly
-            // during its own input event) desynchronizes Chrome and stops it
-            // from reporting further keystrokes after the first one. Focus is
-            // passed to the new node, the on-screen keyboard stays open.
-            setTimeout(() => {
-                this.recycle(true);
-            }, 0);
-        });
-
-        // Flush a leftover value when the field loses focus for other
-        // reasons; the replacement below is done without refocusing so the
-        // on-screen keyboard is allowed to close.
-        input.addEventListener("blur", () => {
-            const value = this.input.value;
-            if (value.length > 0) {
-                this.send_text(value);
-            }
-            this.recycle(false);
-        });
-    }
-
-    // Replaces the funnel field with a fresh clone. Refocus is skipped when
-    // the field lost focus for other reasons (e.g. the video was tapped).
-    recycle(refocus: boolean) {
-        const fresh = this.input.cloneNode(true) as HTMLInputElement;
-        fresh.value = "";
-        this.input.replaceWith(fresh);
-        this.input = fresh;
-        if (refocus) {
-            fresh.focus();
-        }
-        this.wire_funnel();
     }
 }
 
