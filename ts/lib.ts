@@ -1005,36 +1005,24 @@ class QuickBar {
         this.webSocket = webSocket;
 
 
-        const tap = (id: string, code: string) => {
-            const btn = document.getElementById(id) as HTMLButtonElement;
-            btn.oncontextmenu = (e) => { e.preventDefault(); return false; };
-            btn.onpointerdown = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                this.send_special_key(code);
-                btn.classList.add("active");
-                setTimeout(() => { btn.classList.remove("active"); }, 150);
-            };
+        // The F11 button toggles fullscreen of this page on the device
+        // itself, independent from the computer.
+        const btn = document.getElementById("qk_f11") as HTMLButtonElement;
+        btn.oncontextmenu = (e) => { e.preventDefault(); return false; };
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
         };
-        tap("qk_f11", "F11");
-        tap("qk_prtsc", "PrintScreen");
-    }
-
-    send_click(button: string, action: string) {
-        this.webSocket.send(JSON.stringify({ "ClickEvent": { "button": button, "action": action } }));
-    }
-
-    send_special_key(code: string) {
-        // location 0 = standard, modifiers are never active here
-        const key = {
-            event_type: "down", code: code, key: code, location: 0,
-            alt: false, ctrl: false, shift: false, meta: false,
-        };
-        this.webSocket.send(JSON.stringify({ "KeyboardEvent": key }));
-        key.event_type = "up";
-        this.webSocket.send(JSON.stringify({ "KeyboardEvent": key }));
+        document.addEventListener("fullscreenchange", () => {
+            btn.classList.toggle("active", document.fullscreenElement !== null);
+        });
     }
 }
+
 function frame_rate_stats() {
     let t = performance.now();
     let fps = Math.round(frame_count / (t - last_fps_calc) * 10000) / 10;
