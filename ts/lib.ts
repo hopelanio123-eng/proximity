@@ -901,6 +901,9 @@ class SoftKeyboard {
     closeButton: HTMLButtonElement;
     toggleButton: HTMLButtonElement;
     enabled: boolean;
+    // timestamp of the last deactivation; used to detect a click that was
+    // caused by the same tap as the blur that just deactivated the funnel
+    deactivated_at: number;
     // content of the funnel field that was already forwarded to the host
     committed: string;
 
@@ -911,6 +914,7 @@ class SoftKeyboard {
         this.toggleButton = document.getElementById("qk_softkb") as HTMLButtonElement;
         this.closeButton = document.getElementById("softkb_close") as HTMLButtonElement;
         this.enabled = false;
+        this.deactivated_at = 0;
         this.committed = "";
 
         this.toggleButton.onclick = (e) => {
@@ -924,12 +928,15 @@ class SoftKeyboard {
                 if (!this.dismiss_if_active()) {
                     this.deactivate();
                 }
+            } else if (Date.now() - this.deactivated_at < 400) {
+                // The tap that produced this click blurred the field first
+                // (focus moves to the button), the blur listener below
+                // deactivated the funnel and only afterwards the click
+                // arrived. That tap meant CLOSE, so do not immediately
+                // reopen - otherwise the second press never closes anything
+                // because deactivate+activate undo each other.
             } else {
-                this.enabled = true;
-                this.bar.classList.remove("hide");
-                this.toggleButton.classList.add("active");
-                this.reset_field();
-                this.input.focus();
+                this.activate();
             }
         };
 
@@ -1056,16 +1063,30 @@ class SoftKeyboard {
         return true;
     }
 
-    deactivate() {
-        this.enabled = false;
-        this.bar.classList.add("hide");
-        this.toggleButton.classList.remove("active");
-        this.reset_field();
+    activate() {
+        this.enabled = true;
+        this.bar.classList.remove("hide");
+        this.toggleButton.classList.add("active");
+        // The funnel deliberately keeps its content across sessions: never
+        // reset the value here. On a live field that desynchronizes mobile
+        // keyboards - after reopening, the IME replays everything it still
+        // held, which then types the previous prompt into the host. Keeping
+        // value and committed identical makes the reopen seamless and the
+        // grapheme diff a no-op. Place the caret at the end so continuing
+        // typing appends, like on the phone's own keyboard.
+        this.input.focus();
+        const len = this.input.value.length;
+        this.input.setSelectionRange(len, len);
     }
 
-    reset_field() {
-        this.committed = "";
-        this.input.value = "";
+    deactivate() {
+        this.enabled = false;
+        this.deactivated_at = Date.now();
+        this.bar.classList.add("hide");
+        this.toggleButton.classList.remove("active");
+        // Deliberately NOT resetting the field: value and committed stay in
+        // sync so the next session continues exactly where the user left
+        // instead of replaying stale text into the host.
     }
 
     send_text_edit(left: number, backspace: number, text: string, right: number) {
