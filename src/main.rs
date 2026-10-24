@@ -27,6 +27,7 @@ mod protocol;
 mod video;
 mod web;
 mod websocket;
+mod audio;
 mod proximity;
 
 fn main() {

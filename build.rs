@@ -105,6 +105,12 @@ fn main() {
     cc::Build::new().file("lib/error.c").compile("error");
     cc::Build::new().file("lib/log.c").compile("log");
 
+    println!("cargo:rerun-if-changed=lib/encode_audio.c");
+    cc::Build::new()
+        .file("lib/encode_audio.c")
+        .include(dist_dir.join("include"))
+        .compile("audio");
+
     let ffmpeg_link_kind =
         // https://github.com/rust-lang/rust/pull/72785
         // https://users.rust-lang.org/t/linking-on-windows-without-wholearchive/49846/3

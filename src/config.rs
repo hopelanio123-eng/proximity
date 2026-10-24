@@ -200,10 +200,87 @@ pub fn write_config(conf: &Config) {
 }
 
 pub fn get_config() -> Config {
-    let args = std::env::args();
+    let args: Vec<String> = std::env::args().collect();
     if let Some(mut config) = read_config() {
         if args.len() > 1 {
-            config.update_from(args);
+            // clap's `update_from` resets every argument not present on the
+            // command line to its default (boolean flags are SetTrue), which
+            // silently clobbers values from the configuration file. Instead
+            // parse the args and copy only the ones that actually differ from
+            // the pure clap baseline, i.e. were provided by the user.
+            if let Ok(cli) = Config::try_parse_from(args.clone()) {
+                if let Ok(defaults) = Config::try_parse_from(["proximity"]) {
+                    if cli.access_code != defaults.access_code {
+                        config.access_code = cli.access_code;
+                    }
+                    if cli.bind_address != defaults.bind_address {
+                        config.bind_address = cli.bind_address;
+                    }
+                    if cli.web_port != defaults.web_port {
+                        config.web_port = cli.web_port;
+                    }
+                    #[cfg(any(target_os = "linux", target_os = "windows"))]
+                    if cli.try_nvenc != defaults.try_nvenc {
+                        config.try_nvenc = cli.try_nvenc;
+                    }
+                    #[cfg(target_os = "linux")]
+                    if cli.try_vaapi != defaults.try_vaapi {
+                        config.try_vaapi = cli.try_vaapi;
+                    }
+                    #[cfg(target_os = "linux")]
+                    if cli.wayland_support != defaults.wayland_support {
+                        config.wayland_support = cli.wayland_support;
+                    }
+                    #[cfg(target_os = "macos")]
+                    if cli.try_videotoolbox != defaults.try_videotoolbox {
+                        config.try_videotoolbox = cli.try_videotoolbox;
+                    }
+                    #[cfg(target_os = "windows")]
+                    if cli.try_mediafoundation != defaults.try_mediafoundation {
+                        config.try_mediafoundation = cli.try_mediafoundation;
+                    }
+                    if cli.auto_start != defaults.auto_start {
+                        config.auto_start = cli.auto_start;
+                    }
+                    if cli.no_gui != defaults.no_gui {
+                        config.no_gui = cli.no_gui;
+                    }
+                    if cli.gui_theme != defaults.gui_theme {
+                        config.gui_theme = cli.gui_theme;
+                    }
+                    if cli.print_index_html {
+                        config.print_index_html = true;
+                    }
+                    if cli.print_access_html {
+                        config.print_access_html = true;
+                    }
+                    if cli.print_style_css {
+                        config.print_style_css = true;
+                    }
+                    if cli.print_lib_js {
+                        config.print_lib_js = true;
+                    }
+                    if cli.custom_index_html.is_some() {
+                        config.custom_index_html = cli.custom_index_html;
+                    }
+                    if cli.custom_access_html.is_some() {
+                        config.custom_access_html = cli.custom_access_html;
+                    }
+                    if cli.custom_style_css.is_some() {
+                        config.custom_style_css = cli.custom_style_css;
+                    }
+                    if cli.custom_lib_js.is_some() {
+                        config.custom_lib_js = cli.custom_lib_js;
+                    }
+                    if cli.completions.is_some() {
+                        config.completions = cli.completions;
+                    }
+                } else {
+                    config.update_from(args.clone());
+                }
+            } else {
+                config.update_from(args);
+            }
         }
         config
     } else {

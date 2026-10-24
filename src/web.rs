@@ -4,6 +4,8 @@ use handlebars::Handlebars;
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
+use hyper::body::Frame;
+use hyper::body::Body;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
@@ -62,6 +64,34 @@ fn response_not_found() -> Response<Full<Bytes>> {
         .unwrap()
 }
 
+// endless HTTP body driven by the audio capture thread; ends once the
+// thread stops (client gone or capture failure)
+struct AudioBody {
+    rx: mpsc::Receiver<Bytes>,
+}
+
+impl Body for AudioBody {
+    type Data = Bytes;
+    type Error = Infallible;
+
+    fn poll_frame(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        match self.get_mut().rx.poll_recv(cx) {
+            std::task::Poll::Ready(Some(data)) => {
+                std::task::Poll::Ready(Some(Ok(Frame::data(data))))
+            }
+            std::task::Poll::Ready(None) => std::task::Poll::Ready(None),
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        false
+    }
+}
+
 async fn response_from_path_or_default(
     path: Option<&PathBuf>,
     default: &str,
@@ -91,7 +121,11 @@ async fn serve(
     debug!("Got request: {:?}", req);
     let mut authed = false;
     if let Some(access_code) = &context.web_config.access_code {
-        if req.method() == Method::GET && (req.uri().path() == "/" || req.uri().path() == "/ws") {
+        if req.method() == Method::GET
+            && (req.uri().path() == "/"
+                || req.uri().path() == "/ws"
+                || req.uri().path() == "/audio_stream")
+        {
             use url::form_urlencoded;
             if let Some(query) = req.uri().query() {
                 let params = form_urlencoded::parse(query.as_bytes())
@@ -198,6 +232,38 @@ async fn serve(
             });
 
             Ok(response.map(|r| r.boxed()))
+        }
+        "/audio_stream" => {
+            if !authed {
+                return Ok(response_from_path_or_default(
+                    context.web_config.custom_access_html.as_ref(),
+                    ACCESS_HTML,
+                    "text/html; charset=utf-8",
+                )
+                .await
+                .map(|r| r.boxed()));
+            }
+            if !cfg!(target_os = "windows") {
+                return Ok(response_not_found().map(|r| r.boxed()));
+            }
+
+            // one capture + encode thread per client; when the browser
+            // stops reading, the channel closes and the thread exits
+            let (sender, receiver) = mpsc::channel::<Bytes>(64);
+            std::thread::Builder::new()
+                .name("audio_loopback".into())
+                .spawn(move || crate::audio::audio_loopback(sender))
+                .map_err(|err| {
+                    error!("Failed to spawn audio thread: {}", err)
+                })
+                .ok();
+
+            return Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", "audio/aac")
+                .header("cache-control", "no-store")
+                .body(BoxBody::new(AudioBody { rx: receiver }))
+                .unwrap());
         }
         "/style.css" => Ok(response_from_path_or_default(
             context.web_config.custom_style_css.as_ref(),

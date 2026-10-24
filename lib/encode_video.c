@@ -617,55 +617,117 @@ void open_video(VideoContext* ctx, Error* err)
 #endif
 
 #ifdef HAS_NVENC
-	if (ctx->try_nvenc && !using_hw &&
-		av_hwdevice_ctx_create(&ctx->hw_device_ctx, AV_HWDEVICE_TYPE_CUDA, NULL, NULL, 0) == 0)
+	if (ctx->try_nvenc && !using_hw)
 	{
 		codec = avcodec_find_encoder_by_name("h264_nvenc");
+#ifdef __linux__
+		int cuda_available =
+			codec &&
+			av_hwdevice_ctx_create(&ctx->hw_device_ctx, AV_HWDEVICE_TYPE_CUDA, NULL, NULL, 0) == 0;
+		if (!cuda_available)
+		{
+			log_warn("CUDA device context unavailable, trying NVENC with system memory input");
+		}
+#else
+		// On Windows, registering capture frames as CUDA graphics resources
+		// fails after encoder init on current drivers (resource register
+		// failed 23) and wedges the session. nvenc happily uploads plain
+		// system memory NV12 frames itself (plain cuMemcpy, no graphics
+		// interop), so go straight for that.
+		int cuda_available = 0;
+#endif
 		if (codec)
 		{
 			ctx->c = avcodec_alloc_context3(codec);
 			if (ctx->c)
 			{
-				Error err = {0};
-				init_scalers(
-					&ctx->scalers,
-					ctx->width_in,
-					ctx->height_in,
-					ctx->width_out,
-					ctx->height_out,
-					AV_PIX_FMT_CUDA,
-#ifdef HAS_LIBNPP
-					AV_PIX_FMT_NV12,
-#else
-					AV_PIX_FMT_BGR0,
-#endif
-					ctx->hw_device_ctx,
-					&err);
-				if (err.code)
+				if (cuda_available)
 				{
-					log_warn("Failed to initialize scaler: %s", err.error_str);
-					avcodec_free_context(&ctx->c);
+					Error err = {0};
+					init_scalers(
+						&ctx->scalers,
+						ctx->width_in,
+						ctx->height_in,
+						ctx->width_out,
+						ctx->height_out,
+						AV_PIX_FMT_CUDA,
+#ifdef HAS_LIBNPP
+						AV_PIX_FMT_NV12,
+#else
+						AV_PIX_FMT_BGR0,
+#endif
+						ctx->hw_device_ctx,
+						&err);
+					if (err.code)
+					{
+						log_warn("Failed to initialize scaler: %s", err.error_str);
+						avcodec_free_context(&ctx->c);
+					}
+					else
+					{
+						ctx->c->pix_fmt = AV_PIX_FMT_CUDA;
+						ctx->c->hw_frames_ctx = ctx->scalers.hw_frames_ctx;
+						av_opt_set(ctx->c->priv_data, "preset", "p1", 0);
+						av_opt_set(ctx->c->priv_data, "zerolatency", "1", 0);
+						av_opt_set(ctx->c->priv_data, "tune", "ull", 0);
+						av_opt_set(ctx->c->priv_data, "rc", "cbr", 0);
+						av_opt_set(ctx->c->priv_data, "cq", "21", 0);
+						av_opt_set(ctx->c->priv_data, "delay", "0", 0);
+						set_codec_params(ctx);
+
+						int ret = avcodec_open2(ctx->c, codec, NULL);
+						if (ret == 0)
+							using_hw = 1;
+						else
+						{
+							log_warn("Could not open codec h264_nvenc: %s!", av_err2str(ret));
+							avcodec_free_context(&ctx->c);
+							destroy_scalers(&ctx->scalers);
+						}
+					}
 				}
 				else
 				{
-					ctx->c->pix_fmt = AV_PIX_FMT_CUDA;
-					ctx->c->hw_frames_ctx = ctx->scalers.hw_frames_ctx;
-					av_opt_set(ctx->c->priv_data, "preset", "p1", 0);
-					av_opt_set(ctx->c->priv_data, "zerolatency", "1", 0);
-					av_opt_set(ctx->c->priv_data, "tune", "ull", 0);
-					av_opt_set(ctx->c->priv_data, "rc", "cbr", 0);
-					av_opt_set(ctx->c->priv_data, "cq", "21", 0);
-					av_opt_set(ctx->c->priv_data, "delay", "0", 0);
-					set_codec_params(ctx);
-
-					int ret = avcodec_open2(ctx->c, codec, NULL);
-					if (ret == 0)
-						using_hw = 1;
+					// No CUDA device context: nvenc accepts plain system
+					// memory NV12 frames and performs the upload itself, so
+					// feed it via the normal software scaler. This runs the
+					// GPU encoder without needing cuInit to succeed.
+					Error err = {0};
+					init_scalers(
+						&ctx->scalers,
+						ctx->width_in,
+						ctx->height_in,
+						ctx->width_out,
+						ctx->height_out,
+						AV_PIX_FMT_NV12,
+						AV_PIX_FMT_NV12,
+						NULL,
+						&err);
+					if (err.code)
+					{
+						log_warn("Failed to initialize scaler: %s", err.error_str);
+						avcodec_free_context(&ctx->c);
+					}
 					else
 					{
-						log_debug("Could not open codec: %s!", av_err2str(ret));
-						avcodec_free_context(&ctx->c);
-						destroy_scalers(&ctx->scalers);
+						ctx->c->pix_fmt = AV_PIX_FMT_NV12;
+						av_opt_set(ctx->c->priv_data, "preset", "p1", 0);
+						av_opt_set(ctx->c->priv_data, "zerolatency", "1", 0);
+						av_opt_set(ctx->c->priv_data, "tune", "ull", 0);
+						av_opt_set(ctx->c->priv_data, "rc", "cbr", 0);
+						av_opt_set(ctx->c->priv_data, "cq", "21", 0);
+						av_opt_set(ctx->c->priv_data, "delay", "0", 0);
+						set_codec_params(ctx);
+
+						int ret = avcodec_open2(ctx->c, codec, NULL);
+						if (ret == 0)
+							using_hw = 1;
+						else
+						{
+							log_warn("Could not open codec h264_nvenc: %s!", av_err2str(ret));
+							avcodec_free_context(&ctx->c);
+							destroy_scalers(&ctx->scalers);
+						}
 					}
 				}
 			}
@@ -673,7 +735,7 @@ void open_video(VideoContext* ctx, Error* err)
 				log_debug("Could not allocate video codec context for 'h264_nvenc'!");
 		}
 		else
-			log_debug("Codec 'h264_nvenc' not found!");
+			log_warn("Codec 'h264_nvenc' not found in this ffmpeg build!");
 	}
 #endif
 

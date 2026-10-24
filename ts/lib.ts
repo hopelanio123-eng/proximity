@@ -269,8 +269,8 @@ class Settings {
     load_settings() {
         let settings_string = localStorage.getItem("settings");
         if (settings_string === null) {
-            this.frame_rate_input.value = frame_rate_scale_inv(30).toString();
-            this.frame_rate_output.value = (30).toString();
+            this.frame_rate_input.value = frame_rate_scale_inv(120).toString();
+            this.frame_rate_output.value = (120).toString();
             let [w, h] = calc_max_video_resolution(this.scale_video_input.valueAsNumber)
             this.scale_video_output.value = w + "x" + h;
             return;
@@ -285,7 +285,7 @@ class Settings {
             if (upd_limit)
                 this.frame_rate_input.value = frame_rate_scale_inv(upd_limit).toString();
             else
-                this.frame_rate_input.value = frame_rate_scale_inv(30).toString();
+                this.frame_rate_input.value = frame_rate_scale_inv(120).toString();
             this.frame_rate_output.value = Math.round(frame_rate_scale(this.frame_rate_input.valueAsNumber)).toString();
 
             let scale_video = settings["scale_video"];
@@ -1147,6 +1147,43 @@ class QuickBar {
         document.addEventListener("fullscreenchange", () => {
             btn.classList.toggle("active", document.fullscreenElement !== null);
         });
+
+        // The audio button streams the PC's sound to this device over a
+        // dedicated HTTP audio stream played by a plain <audio> element.
+        // Creating the element inside the click handler doubles as the
+        // user gesture required by autoplay policies; removing it again
+        // aborts the connection, which makes the server stop capturing
+        // and encoding.
+        const audioBtn = document.getElementById("qk_audio") as HTMLButtonElement;
+        let audioElement: HTMLAudioElement | null = null;
+        const stop_audio = () => {
+            if (audioElement) {
+                audioElement.pause();
+                audioElement.removeAttribute("src");
+                audioElement.load();
+                audioElement.remove();
+                audioElement = null;
+            }
+            audioBtn.classList.remove("active");
+        };
+        audioBtn.oncontextmenu = (e) => { e.preventDefault(); return false; };
+        audioBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (audioElement) {
+                stop_audio();
+                return;
+            }
+            // reuse the page's query string so the access code carries over
+            audioElement = document.createElement("audio");
+            audioElement.src = "/audio_stream" + window.location.search;
+            audioElement.style.display = "none";
+            document.body.appendChild(audioElement);
+            audioBtn.classList.add("active");
+            audioElement.play().catch((err) => {
+                log(LogLevel.WARN, "Audio streaming failed to start: " + err);
+                stop_audio();
+            });
+        };
     }
 }
 
