@@ -71,14 +71,27 @@ impl CaptrsRecorder {
 
 impl Recorder for CaptrsRecorder {
     fn capture(&mut self) -> Result<crate::video::PixelProvider, Box<dyn Error>> {
-        self.capturer
-            .capture_store_frame()
-            .map_err(|_e| CaptrsError("Captrs failed to capture frame".into()))?;
+        // Windows Graphics Capture only produces frames when the content
+        // changes: on an idle desktop capture_store_frame fails quickly, and
+        // before this change that meant returning an error every tick - the
+        // client froze on its last decoded frame and looked like the host
+        // ignored the input (exactly what a minimized window triggers: the
+        // caret that kept producing frames is gone). The frame stored by
+        // captrs stays valid, so keep handing it out; the next actual change
+        // is streamed as usual.
+        if let Err(_e) = self.capturer.capture_store_frame() {
+            // fall through to the stored frame
+        }
+        let Some(frame) = self.capturer.get_stored_frame() else {
+            // nothing captured yet (first frame on an already static
+            // desktop): report the failure so the recorder gets rebuilt
+            return Err(CaptrsError("Capturer has no stored frame yet".into()).into());
+        };
         let (w, h) = self.capturer.geometry();
         Ok(crate::video::PixelProvider::BGR0(
             w as usize,
             h as usize,
-            unsafe { std::mem::transmute(self.capturer.get_stored_frame().unwrap()) },
+            unsafe { std::mem::transmute(frame) },
         ))
     }
 }

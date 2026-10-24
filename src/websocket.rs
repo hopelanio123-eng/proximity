@@ -352,7 +352,10 @@ fn handle_video<S: ProximitySender + Clone + 'static>(
     let mut frame_duration = EFFECTIVE_INIFINITY;
     let mut last_frame = Instant::now();
     let mut paused = false;
+    let mut capturable: Option<Box<dyn Capturable>> = None;
+    let mut capture_cursor = false;
 
+    let mut failed_captures: u32 = 0;
     loop {
         let now = Instant::now();
         let elapsed = now - last_frame;
@@ -394,6 +397,8 @@ fn handle_video<S: ProximitySender + Clone + 'static>(
                         )
                     }
                 }
+                capture_cursor = config.capture_cursor;
+                capturable = Some(config.capturable);
                 last_frame = Instant::now();
 
                 // The Duration type can not handle infinity, if the frame rate is set to 0 we just
@@ -423,9 +428,38 @@ fn handle_video<S: ProximitySender + Clone + 'static>(
                 }
                 let pixel_data = recorder.as_mut().unwrap().capture();
                 if let Err(err) = pixel_data {
-                    warn!("Error capturing screen: {}", err);
+                    failed_captures += 1;
+                    // A capture source can get wedged permanently, e.g. the
+                    // Windows Graphics Capture frame pool stops delivering
+                    // frames after the desktop became fully static (that is
+                    // exactly what happens when the last animating window -
+                    // e.g. the one the user was typing in - is minimized).
+                    // Without this the client freezes on the last frame and
+                    // looks like the window did not react at all. Rebuilding
+                    // the recorder, same ordering as on Start for pipewire,
+                    // recovers the capture.
+                    if failed_captures >= 10 {
+                        if let Some(capturable) = capturable.as_ref() {
+                            recorder = None;
+                            match capturable.recorder(capture_cursor) {
+                                Ok(r) => recorder = Some(r),
+                                Err(r_err) => {
+                                    warn!("Failed to re-init screen cast: {}", r_err);
+                                }
+                            }
+                        }
+                        failed_captures = 0;
+                    } else if failed_captures == 1 {
+                        // only warn once per error streak, otherwise a broken
+                        // capture floods the logs five times a second
+                        warn!(
+                            "Error capturing screen: {} (will retry, {} missed frames until re-init)",
+                            err, 9
+                        );
+                    }
                     continue;
                 }
+                failed_captures = 0;
                 let pixel_data = pixel_data.unwrap();
                 let (width_in, height_in) = pixel_data.size();
                 let scale =
