@@ -4,7 +4,6 @@ use winapi::um::winuser::*;
 
 use tracing::warn;
 
-use crate::input::autopilot_device::AutoPilotDevice;
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
     Button, ClickButton, ClickEvent, ClickEventType, KeyboardEvent, KeyboardEventType,
@@ -71,6 +70,55 @@ fn string_to_vk(key: &str) -> Option<u16> {
         "f10" => Some(VK_F10 as u16),
         "f11" => Some(VK_F11 as u16),
         "f12" => Some(VK_F12 as u16),
+        "f13" => Some(VK_F13 as u16),
+        "f14" => Some(VK_F14 as u16),
+        "f15" => Some(VK_F15 as u16),
+        "f16" => Some(VK_F16 as u16),
+        "f17" => Some(VK_F17 as u16),
+        "f18" => Some(VK_F18 as u16),
+        "f19" => Some(VK_F19 as u16),
+        "f20" => Some(VK_F20 as u16),
+        "f21" => Some(VK_F21 as u16),
+        "f22" => Some(VK_F22 as u16),
+        "f23" => Some(VK_F23 as u16),
+        "f24" => Some(VK_F24 as u16),
+        "capslock" => Some(VK_CAPITAL as u16),
+        "numlock" => Some(VK_NUMLOCK as u16),
+        "scrolllock" => Some(VK_SCROLL as u16),
+        "pause" => Some(VK_PAUSE as u16),
+        "contextmenu" => Some(VK_APPS as u16),
+        // Browser KeyboardEvent codes distinguish the two edges of a
+        // modifier; Windows has one mapping per pair (the extended-key flag
+        // together with the OEM variants decides the edge).
+        "shiftleft" | "shiftright" => Some(VK_SHIFT as u16),
+        "controlleft" | "controlright" => Some(VK_CONTROL as u16),
+        "altleft" | "altright" => Some(VK_MENU as u16),
+        "metaleft" | "metaright" => Some(VK_LWIN as u16),
+        "rwin" => Some(VK_RWIN as u16),
+        "numpad0" | "numpad1" | "numpad2" | "numpad3" | "numpad4" | "numpad5" | "numpad6"
+        | "numpad7" | "numpad8" | "numpad9" => {
+            let d = key.as_bytes()[6] - b'0';
+            Some((VK_NUMPAD0 as u8 + d) as u16)
+        }
+        "numpadenter" => Some(VK_RETURN as u16),
+        "numpadadd" => Some(VK_ADD as u16),
+        "numpadsubtract" => Some(VK_SUBTRACT as u16),
+        "numpadmultiply" => Some(VK_MULTIPLY as u16),
+        "numpaddivide" => Some(VK_DIVIDE as u16),
+        "numpaddecimal" => Some(VK_DECIMAL as u16),
+        // Punctuation via browser codes.
+        "minus" => Some(VK_OEM_MINUS as u16),
+        "equal" => Some(VK_OEM_PLUS as u16),
+        "comma" => Some(VK_OEM_COMMA as u16),
+        "period" => Some(VK_OEM_PERIOD as u16),
+        "slash" => Some(VK_OEM_2 as u16),
+        "semicolon" => Some(VK_OEM_1 as u16),
+        "quote" => Some(VK_OEM_7 as u16),
+        "backquote" => Some(VK_OEM_3 as u16),
+        "bracketleft" => Some(VK_OEM_4 as u16),
+        "bracketright" => Some(VK_OEM_6 as u16),
+        "backslash" => Some(VK_OEM_5 as u16),
+        "intlbackslash" => Some(VK_OEM_102 as u16),
         // Letter and digit keys
         s if s.len() == 1 => {
             let c = s.chars().next().unwrap().to_ascii_uppercase();
@@ -86,7 +134,6 @@ fn string_to_vk(key: &str) -> Option<u16> {
 
 pub struct WindowsInput {
     capturable: Box<dyn Capturable>,
-    autopilot_device: AutoPilotDevice,
     pointer_device_handle: *mut HSYNTHETICPOINTERDEVICE__,
     touch_device_handle: *mut HSYNTHETICPOINTERDEVICE__,
     multitouch_map: std::collections::HashMap<i64, POINTER_TYPE_INFO>,
@@ -150,12 +197,118 @@ impl WindowsInput {
         }
     }
 
+    /// Maps a browser KeyboardEvent code to a virtual key. The "Key"/"Digit"
+    /// prefixes are stripped so "KeyA"/"Digit1" collapse onto the single
+    /// character mapping of string_to_vk; everything else must have an
+    /// explicit entry there.
+    fn code_to_vk(code: &str) -> Option<u16> {
+        let lower = code.to_lowercase();
+        let stripped = if let Some(rest) = lower.strip_prefix("key") {
+            rest
+        } else if let Some(rest) = lower.strip_prefix("digit") {
+            rest
+        } else {
+            &lower
+        };
+        string_to_vk(stripped)
+    }
+
+    /// Sends only the down (or only the up) part of `text` as raw unicode
+    /// keyboard events. Used for KeyboardEvents that map to no virtual key
+    /// (letters, digits, punctuation and any non-latin character): the client
+    /// sends the matching down/up pair, this sends the matching half. No
+    /// autopilot involved, so no transmute panics.
+    fn type_text_half(&mut self, text: &str, down: bool) {
+        let mut inputs = Vec::<INPUT>::with_capacity(text.encode_utf16().count());
+        for code_point in text.encode_utf16() {
+            let mut input: INPUT = unsafe { std::mem::zeroed() };
+            input.type_ = INPUT_KEYBOARD;
+            unsafe {
+                input.u.ki_mut().wVk = 0;
+                input.u.ki_mut().wScan = code_point;
+                input.u.ki_mut().dwFlags = if down {
+                    KEYEVENTF_UNICODE
+                } else {
+                    KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+                };
+            }
+            inputs.push(input);
+        }
+        if !inputs.is_empty() {
+            let sent = unsafe {
+                SendInput(
+                    inputs.len() as u32,
+                    inputs.as_mut_ptr(),
+                    std::mem::size_of::<INPUT>() as i32,
+                )
+            };
+            if sent != inputs.len() as u32 {
+                warn!("SendInput was blocked from injecting a keyboard event");
+            }
+        }
+    }
+
+    /// Sends the down or up half of one virtual key, honoring the
+    /// extended-key flag.
+    fn vk_event(&mut self, vk: u16, down: bool) {
+        unsafe {
+            let scan = MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) as u8;
+            let mut flags: DWORD = 0;
+            if extended_key(vk) {
+                flags |= KEYEVENTF_EXTENDEDKEY;
+            }
+            if !down {
+                flags |= KEYEVENTF_KEYUP;
+            }
+            keybd_event(vk as u8, scan, flags, 0);
+        }
+    }
+
+    /// The modifier flags shipped with a KeyboardEvent, in press order.
+    fn modifier_vks(event: &KeyboardEvent) -> Vec<u16> {
+        let mut vks = Vec::new();
+        if event.ctrl {
+            vks.push(VK_CONTROL as u16);
+        }
+        if event.alt {
+            vks.push(VK_MENU as u16);
+        }
+        if event.shift {
+            vks.push(VK_SHIFT as u16);
+        }
+        if event.meta {
+            vks.push(VK_LWIN as u16);
+        }
+        vks
+    }
+
+    fn key_down(&mut self, event: &KeyboardEvent) {
+        for vk in Self::modifier_vks(event) {
+            self.vk_event(vk, true);
+        }
+        if let Some(vk) = Self::code_to_vk(&event.code) {
+            self.vk_event(vk, true);
+        } else {
+            self.type_text_half(&event.key, true);
+        }
+    }
+
+    fn key_up(&mut self, event: &KeyboardEvent) {
+        if let Some(vk) = Self::code_to_vk(&event.code) {
+            self.vk_event(vk, false);
+        } else {
+            self.type_text_half(&event.key, false);
+        }
+        for vk in Self::modifier_vks(event).into_iter().rev() {
+            self.vk_event(vk, false);
+        }
+    }
+
     pub fn new(capturable: Box<dyn Capturable>) -> Self {
         unsafe {
             InitializeTouchInjection(5, TOUCH_FEEDBACK_DEFAULT);
             Self {
-                capturable: capturable.clone(),
-                autopilot_device: AutoPilotDevice::new(capturable),
+                capturable: capturable,
                 pointer_device_handle: CreateSyntheticPointerDevice(PT_PEN, 1, 1),
                 touch_device_handle: CreateSyntheticPointerDevice(PT_TOUCH, 5, 1),
                 multitouch_map: std::collections::HashMap::new(),
@@ -379,7 +532,13 @@ impl InputDevice for WindowsInput {
             self.send_print_screen(event);
             return;
         }
-        self.autopilot_device.send_keyboard_event(event);
+        match event.event_type {
+            KeyboardEventType::DOWN => self.key_down(event),
+            KeyboardEventType::UP => self.key_up(event),
+            // Handled in the code path of the client, repeating a key down
+            // adds nothing on Windows.
+            KeyboardEventType::REPEAT => {}
+        }
     }
 
     fn send_click_event(&mut self, event: &ClickEvent) {
