@@ -6,6 +6,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0b0d10">
+    <meta name="color-scheme" content="dark light">
     <title>Proximity</title>
     <link rel="stylesheet" href="style.css">
     <script src="lib.js"></script>
@@ -20,86 +22,173 @@
         <canvas id="canvas" class="vanish"></canvas>
         <div id="debug_overlay" class="hide"></div>
     </main>
+
+    <!-- Opens the settings panel; the panel itself lives off-screen when hidden. -->
+    <button id="settings_fab" type="button" title="Settings" aria-label="Open settings">
+        <svg viewBox="0 0 24 24" width="1.5em" height="1.5em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+            <circle cx="15" cy="7" r="2" />
+            <circle cx="9" cy="17" r="2" />
+        </svg>
+    </button>
+
     <div id="settings">
-        <div id="handle">в ї</div>
+        <div id="handle" aria-hidden="true">‹</div>
+
+        <header id="settings_header">
+            <div class="head_text">
+                <span class="head_title">Proximity</span>
+                <span class="head_sub">Device settings</span>
+            </div>
+            <button id="settings_close" type="button" aria-label="Close settings">✕</button>
+        </header>
+
+        <nav class="tabs" role="tablist" aria-label="Settings sections">
+            <button class="tab_btn active" type="button" role="tab" aria-selected="true" data-tab="screen">Screen</button>
+            <button class="tab_btn" type="button" role="tab" aria-selected="false" data-tab="input">Input</button>
+            <button class="tab_btn" type="button" role="tab" aria-selected="false" data-tab="more">More</button>
+        </nav>
+
         <div id="settings_scroll">
-            <h2>Settings</h2>
-            <section>
-                <label for="window">Capture:</label>
-                <select id="window"></select>
-                <button id="refresh">Refresh List</button>
-            </section>
-            <h3>Video</h3>
-            <section>
-                <label><input type="checkbox" id="enable_video" checked /> <span>Enable Video</span></label>
-                <label><input type="checkbox" id="energysaving" /> <span>Energy Saving (no video, black
-                        screen)</span></label>
-                <label><input type="checkbox" id="stretch" checked /> <span>Stretch Video</span></label>
-                <button id="fullscreen">Toggle Fullscreen</button>
-                <label {{#if (not capture_cursor_enabled)}}class="hide" {{/if}}>
-                    <input type="checkbox" id="capture_cursor" />
-                    <span>Capture Cursor</span>
-                </label>
-                <label><input type="checkbox" id="aggressive_seeking" checked /> <span>Lower Latency<br>(possibly
-                        choppy)</span></label>
-                <label>Max Video Resolution: <br><input type="range" id="scale_video" min="0.1" max="2" step="0.01"
-                        value="1.8" /><output></output></label>
-                <label>Frame Rate: <br><input type="range" id="frame_rate" value="0" /><output>30</output> fps</label>
-            </section>
-            <h3>Input</h3>
-            <section>
-                <label><input type="checkbox" id="enable_mouse" checked /> <span>Enable Mouse</span></label>
-                <label><input type="checkbox" id="enable_stylus" checked /> <span>Enable Stylus</span></label>
-                <label><input type="checkbox" id="enable_touch" checked /> <span>Enable Touch</span></label>
-                <label {{#if (not uinput_enabled)}}class="hide" {{/if}}>
-                    <input type="checkbox" id="uinput_support" checked />
-                    <span>Enable uinput</span>
-                </label>
-                <label>Min pressure to generate: <br><input type="range" id="min_pressure" min="0" max="1" step="0.01"
-                        value="0" /></label>
-                <button id="custom_input_areas" {{#if (not enable_custom_input_areas)}}class="hide" {{/if}}>Custom Input
-                    Area</button>
-                <label {{#if (not enable_custom_input_areas)}}class="hide" {{/if}}><input type="checkbox"
-                        id="enable_custom_input_areas" /> <span>Enable Custom Input
-                        Area</span></label>
-            </section>
-            <section {{#if (not uinput_enabled)}}class="hide" {{/if}}>
-                <label><span>Client Name:</span><br><input type="text" id="client_name" /><br><span>Optional, useful to
-                        distinguish multiple devices.</span></label>
-            </section>
-            <section id="displayoptions">
-                <label id="leftylabel"><input type="checkbox" id="lefty" />Swap</label>
-                <label id="vanish">Hide until Reload</label>
-            </section>
-            <section id="stats_section">
-                <label><span>FPS (receiving): </span><output id="fps">0</output></label>
-            </section>
-            <section id="debug_section">
-                <label><input type="checkbox" id="enable_debug_overlay" /> <span>Debug
-                        Overlay</span></label>
-            </section>
-            <section id="log_section" class="hide">
-                <label>Log
-                    <pre class="log" id="log" />
-                </label>
-            </section>
+            <div class="tab_panel active" data-tab-panel="screen" role="tabpanel">
+                <h3>Source</h3>
+                <section>
+                    <label class="field_label" for="window">Capture</label>
+                    <select id="window"></select>
+                    <button id="refresh" type="button" class="btn btn_ghost">Refresh list</button>
+                </section>
+                <h3>Video</h3>
+                <section>
+                    <label class="toggle"><input type="checkbox" id="enable_video" checked /> <span>Enable video</span></label>
+                    <label class="toggle"><input type="checkbox" id="energysaving" /> <span>Energy saving <em>no video, black screen</em></span></label>
+                    <label class="toggle"><input type="checkbox" id="stretch" checked /> <span>Stretch video</span></label>
+                    <label class="toggle"><input type="checkbox" id="aggressive_seeking" checked /> <span>Lower latency <em>possibly choppy</em></span></label>
+                    <label class="{{#if (not capture_cursor_enabled)}}toggle hide{{else}}toggle{{/if}}">
+                        <input type="checkbox" id="capture_cursor" />
+                        <span>Capture cursor</span>
+                    </label>
+                    <label class="slider">
+                        <span>Max video resolution</span>
+                        <input type="range" id="scale_video" min="0.1" max="2" step="0.01" value="1.8" /><output></output>
+                    </label>
+                    <label class="slider">
+                        <span>Frame rate</span>
+                        <input type="range" id="frame_rate" value="0" /><output>30</output><span class="unit">fps</span>
+                    </label>
+                    <button id="fullscreen" type="button" class="btn">Toggle fullscreen</button>
+                </section>
+            </div>
+
+            <div class="tab_panel" data-tab-panel="input" role="tabpanel">
+                <h3>Input devices</h3>
+                <section>
+                    <label class="toggle"><input type="checkbox" id="enable_mouse" checked /> <span>Enable mouse</span></label>
+                    <label class="toggle"><input type="checkbox" id="enable_stylus" checked /> <span>Enable stylus</span></label>
+                    <label class="toggle"><input type="checkbox" id="enable_touch" checked /> <span>Enable touch</span></label>
+                    <label class="{{#if (not uinput_enabled)}}toggle hide{{else}}toggle{{/if}}">
+                        <input type="checkbox" id="uinput_support" checked />
+                        <span>Enable uinput</span>
+                    </label>
+                    <label class="slider">
+                        <span>Min pressure to generate</span>
+                        <input type="range" id="min_pressure" min="0" max="1" step="0.01" value="0" />
+                    </label>
+                </section>
+                <h3>Client</h3>
+                <section {{#if (not uinput_enabled)}}class="hide" {{/if}}>
+                    <label class="field_label" for="client_name">Client name</label>
+                    <input type="text" id="client_name" placeholder="Optional" />
+                    <span class="hint">Useful to distinguish multiple devices.</span>
+                </section>
+                <section>
+                    <button id="custom_input_areas" type="button" class="{{#if (not enable_custom_input_areas)}}btn hide{{else}}btn{{/if}}">Custom input area</button>
+                    <label class="{{#if (not enable_custom_input_areas)}}toggle hide{{else}}toggle{{/if}}">
+                        <input type="checkbox" id="enable_custom_input_areas" />
+                        <span>Enable custom input area</span>
+                    </label>
+                </section>
+            </div>
+
+            <div class="tab_panel" data-tab-panel="more" role="tabpanel">
+                <h3>Display</h3>
+                <section id="displayoptions">
+                    <label id="leftylabel" class="chip"><input type="checkbox" id="lefty" /> <span>Left-handed</span></label>
+                    <button id="vanish" type="button" class="btn btn_ghost">Hide until reload</button>
+                </section>
+                <h3>Statistics</h3>
+                <section id="stats_section">
+                    <div class="stat_row">
+                        <span>FPS (receiving)</span>
+                        <output id="fps">0</output>
+                    </div>
+                </section>
+                <h3>Diagnostics</h3>
+                <section id="debug_section">
+                    <label class="toggle"><input type="checkbox" id="enable_debug_overlay" /> <span>Debug overlay</span></label>
+                </section>
+                <section id="log_section" class="hide">
+                    <span class="field_label">Log</span>
+                    <pre class="log" id="log"></pre>
+                </section>
+            </div>
         </div>
     </div>
-    <!-- Floating quick action buttons on the left edge over the video -->
+
+    <!-- Floating quick actions over the video -->
     <div id="quickbar">
-        <button class="qk-btn" id="qk_f11" title="Fullscreen">F11</button>
-        <button class="qk-btn" id="qk_audio" title="PC audio on/off">
-            <svg viewBox="0 0 24 24" width="1.4em" height="1.4em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.25 4.75v14.5l-4.75-3.75H3.75A1 1 0 0 1 2.75 14.5v-5a1 1 0 0 1 1-1h2.75l4.75-3.75z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18.25 6.5a8.5 8.5 0 0 1 0 11"/></svg>
+        <button class="qk_btn" id="qk_f11" title="Fullscreen" aria-label="Toggle fullscreen">
+            <svg viewBox="0 0 24 24" width="1.4em" height="1.4em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg>
         </button>
-        <button class="qk-btn" id="qk_softkb" title="Keyboard">
-            <svg viewBox="0 0 24 24" width="1.4em" height="1.4em" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.75" y="5.75" width="18.5" height="12.5" rx="1.5"/><path d="M6 9.25h.01M9.25 9.25h.01M12.5 9.25h.01M15.75 9.25h.01M18.99 9.25h.01"/><path d="M5.5 12h.01M8.5 12h.01M11.5 12h.01M14.5 12h.01M17.5 12h.01"/><path d="M9 14.75h6"/></svg>
+        <button class="qk_btn" id="qk_audio" title="PC audio on/off" aria-label="Toggle PC audio">
+            <svg viewBox="0 0 24 24" width="1.4em" height="1.4em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.25 4.75v14.5l-4.75-3.75H3.75A1 1 0 0 1 2.75 14.5v-5a1 1 0 0 1 1-1h2.75l4.75-3.75z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18.25 6.5a8.5 8.5 0 0 1 0 11"/></svg>
+        </button>
+        <button class="qk_btn" id="qk_softkb" title="Keyboard" aria-label="Toggle keyboard">
+            <svg viewBox="0 0 24 24" width="1.4em" height="1.4em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.75" y="5.75" width="18.5" height="12.5" rx="2"/><path d="M6 9.25h.01M9.25 9.25h.01M12.5 9.25h.01M15.75 9.25h.01M18.99 9.25h.01"/><path d="M5.5 12h.01M8.5 12h.01M11.5 12h.01M14.5 12h.01M17.5 12h.01"/><path d="M9 14.75h6"/></svg>
         </button>
     </div>
+
     <!-- Text funnel bar for the on-screen keyboard -->
     <div id="softkb_bar" class="hide">
         <input type="text" id="softkb_input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Type here..." />
-        <button id="softkb_close" title="Close">✕</button>
+        <button id="softkb_close" type="button" title="Close" aria-label="Close keyboard">✕</button>
     </div>
+
+    <script>
+        (function () {
+            var settings = document.getElementById("settings");
+            var handle = document.getElementById("handle");
+            var closeBtn = document.getElementById("settings_close");
+            var fab = document.getElementById("settings_fab");
+            var scroll = document.getElementById("settings_scroll");
+
+            function togglePanel(e) {
+                if (e) { e.stopPropagation(); }
+                // Reuse the toggle wired up by lib.js so its internal
+                // "visible" flag stays in sync.
+                handle.click();
+            }
+
+            closeBtn.addEventListener("click", togglePanel);
+            fab.addEventListener("click", togglePanel);
+
+            var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab_btn"));
+            var panels = Array.prototype.slice.call(document.querySelectorAll("[data-tab-panel]"));
+            tabs.forEach(function (tab) {
+                tab.addEventListener("click", function (e) {
+                    e.stopPropagation();
+                    tabs.forEach(function (t) {
+                        var active = t === tab;
+                        t.classList.toggle("active", active);
+                        t.setAttribute("aria-selected", active ? "true" : "false");
+                    });
+                    panels.forEach(function (p) {
+                        p.classList.toggle("active", p.getAttribute("data-tab-panel") === tab.getAttribute("data-tab"));
+                    });
+                    scroll.scrollTop = 0;
+                });
+            });
+        })();
+    </script>
 </body>
 
 </html>
