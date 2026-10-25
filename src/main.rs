@@ -24,6 +24,7 @@ mod gui;
 mod input;
 mod log;
 mod protocol;
+mod theme;
 mod video;
 mod web;
 mod websocket;
