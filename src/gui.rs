@@ -15,6 +15,7 @@ use fltk::{
     app::{awake_callback, App},
     button::{Button, CheckButton},
     frame::Frame,
+    group::Group,
     input::{Input, IntInput},
     output::Output,
     prelude::*,
@@ -34,10 +35,18 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let height = 30;
     let padding = 10;
 
+    // Desktop shell: a fixed navigation sidebar plus a page area holding the
+    // "Главная" (home) and "Настройки" (settings) views.
+    const NAV_W: i32 = 176;
+    const WIN_W: i32 = 680;
+    const WIN_H: i32 = 660;
+    const CONTENT_W: i32 = WIN_W - NAV_W;
+    const PAGE_W: i32 = CONTENT_W - 48;
+
     let app = App::default().with_scheme(fltk::app::AppScheme::Gtk);
     config.gui_theme.map(|th| th.apply());
     let mut wind = Window::default()
-        .with_size(660, 660)
+        .with_size(WIN_W, WIN_H)
         .center_screen()
         .with_label(&format!("Proximity - {}", env!("CARGO_PKG_VERSION")));
     wind.set_xclass("proximity");
@@ -46,43 +55,141 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     wind.set_color(Color::from_rgb(14, 17, 22));
     wind.set_id("main_window");
 
+    // --- Sidebar with the "Главная" / "Настройки" navigation --------------
+    let mut nav_bar = Group::default()
+        .with_pos(0, 0)
+        .with_size(NAV_W, WIN_H)
+        .with_id("nav_bar");
+
     Frame::default()
-        .with_size(390, 32)
-        .with_pos(74, 12)
+        .with_size(40, 40)
+        .with_pos(16, 14)
+        .with_align(Align::Center | Align::Inside.bits())
+        .with_label("P")
+        .with_id("brand_mark");
+    Frame::default()
+        .with_size(104, 20)
+        .with_pos(64, 17)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("Proximity")
         .with_id("head_title");
     Frame::default()
-        .with_size(390, 16)
-        .with_pos(76, 44)
+        .with_size(104, 14)
+        .with_pos(66, 39)
         .with_align(Align::Left | Align::Inside.bits())
-        .with_label(&format!(
-            "v{} - control your PC from any device with a browser",
-            env!("CARGO_PKG_VERSION")
-        ))
+        .with_label(&format!("v{}", env!("CARGO_PKG_VERSION")))
         .with_id("head_sub");
 
     Frame::default()
-        .with_size(42, 42)
-        .with_pos(20, 14)
-        .with_align(Align::Center | Align::Inside.bits())
-        .with_label("P")
-        .with_id("brand_mark");
+        .with_size(140, 16)
+        .with_pos(16, 78)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("МЕНЮ")
+        .with_id("nav_caption");
+
+    let mut nav_home_btn = Button::default()
+        .with_size(148, 32)
+        .with_pos(14, 98)
+        .with_label("Главная")
+        .with_id("nav_home");
+    let mut nav_settings_btn = Button::default()
+        .with_size(148, 32)
+        .with_pos(14, 132)
+        .with_label("Настройки")
+        .with_id("nav_settings");
+
     let mut status_pill = Frame::default()
-        .with_size(162, 34)
-        .with_pos(478, 18)
+        .with_size(148, 30)
+        .with_pos(14, WIN_H - 62)
         .with_align(Align::Center | Align::Inside.bits())
         .with_label("Server offline")
         .with_id("status_pill");
     status_pill.set_tooltip("Shows whether the Proximity server is accepting connections.");
+
+    nav_bar.end();
+
+    // 1px divider between the navigation sidebar and the pages.
     Frame::default()
-        .with_size(620, 1)
-        .with_pos(20, 76)
+        .with_size(1, WIN_H)
+        .with_pos(NAV_W - 1, 0)
         .with_id("head_divider");
 
+    // --- Home page ---------------------------------------------------------
+    let mut page_home = Group::default()
+        .with_pos(NAV_W, 0)
+        .with_size(CONTENT_W, WIN_H)
+        .with_id("page_home");
+
+    Frame::default()
+        .with_size(PAGE_W, 40)
+        .with_pos(24, 18)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("Control your PC from any device\nwith a browser.")
+        .with_id("home_caption");
+
+    let mut output_server_addr = Output::default()
+        .with_size(330, height)
+        .with_pos(150, 76)
+        .with_label("Connect to:")
+        .with_id("output_addr");
+    output_server_addr.hide();
+
+    let mut but_toggle = Button::default()
+        .with_size(150, 34)
+        .with_pos(150, 114)
+        .with_label("Start")
+        .with_id("btn_toggle");
+
+    let mut qr_frame = Frame::default()
+        .with_size(235, 235)
+        .with_pos(245, 114)
+        .with_id("qr_frame");
+    qr_frame.hide();
+
+    let output_buf = TextBuffer::default();
+    let mut output = TextDisplay::default()
+        .with_size(PAGE_W, 250)
+        .with_pos(24, 390)
+        .with_id("log_display");
+    output.set_buffer(output_buf);
+    let output_buf = output.buffer().unwrap();
+
+    page_home.end();
+
+    // --- Settings page -----------------------------------------------------
+    let mut page_settings = Group::default()
+        .with_pos(NAV_W, 0)
+        .with_size(CONTENT_W, WIN_H)
+        .with_id("page_settings");
+
+    Frame::default()
+        .with_size(PAGE_W, 16)
+        .with_pos(24, 18)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("ОФОРМЛЕНИЕ")
+        .with_id("sec_skin");
+
+    let mut choice_theme = Choice::default()
+        .with_size(330, height)
+        .with_pos(150, 40)
+        .with_label("Theme")
+        .with_id("choice_theme");
+
+    for theme in ThemeType::themes() {
+        choice_theme.add_choice(&theme.name());
+    }
+    choice_theme.set_value(config.gui_theme.unwrap_or(ThemeType::default()).to_index());
+
+    Frame::default()
+        .with_size(PAGE_W, 16)
+        .with_pos(24, 90)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("СЕТЬ И ДОСТУП")
+        .with_id("sec_net");
+
     let mut input_access_code = Input::default()
-        .with_pos(130, 100)
-        .with_size(width, height)
+        .with_pos(150, 112)
+        .with_size(330, height)
         .with_label("Access code")
         .with_id("input_access");
     input_access_code.set_tooltip(
@@ -96,22 +203,22 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     }
 
     let mut input_bind_addr = Input::default()
-        .with_size(width, height)
-        .below_of(&input_access_code, padding)
+        .with_size(330, height)
+        .with_pos(150, 150)
         .with_label("Bind Address")
         .with_id("input_bind");
     input_bind_addr.set_value(&config.bind_address.to_string());
 
     let mut input_port = IntInput::default()
-        .with_size(width, height)
-        .below_of(&input_bind_addr, padding)
+        .with_size(330, height)
+        .with_pos(150, 188)
         .with_label("Port")
         .with_id("input_port");
     input_port.set_value(&config.web_port.to_string());
 
     let mut check_auto_start = CheckButton::default()
-        .with_size(70, height)
-        .below_of(&input_port, padding + 5)
+        .with_size(330, height)
+        .with_pos(150, 228)
         .with_label("Auto Start")
         .with_id("check_auto");
     check_auto_start.set_tooltip("Start Proximity server immediately on program start.");
@@ -119,9 +226,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     #[cfg(target_os = "linux")]
     let mut check_wayland = CheckButton::default()
-        .with_size(70, height)
-        .right_of(&check_auto_start, 3 * padding)
-        .with_label("Wayland/\nPipeWire\nSupport")
+        .with_size(330, height)
+        .with_pos(150, 258)
+        .with_label("Wayland / PipeWire Support")
         .with_id("check_wayland");
     #[cfg(target_os = "linux")]
     {
@@ -132,9 +239,16 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         check_wayland.set_checked(config.wayland_support);
     }
 
+    Frame::default()
+        .with_size(PAGE_W, 16)
+        .with_pos(24, 312)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("УСКОРЕНИЕ")
+        .with_id("sec_hw");
+
     let mut label_hw_accel = Frame::default()
-        .with_size(width, height)
-        .below_of(&check_auto_start, padding)
+        .with_size(330, height)
+        .with_pos(150, 334)
         .with_label("Try Hardware acceleration")
         .with_id("label_hw");
     label_hw_accel.set_tooltip(
@@ -144,8 +258,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     );
 
     let mut check_native_hw_accel = CheckButton::default()
-        .with_size(70, height)
-        .below_of(&label_hw_accel, 0)
+        .with_size(160, height)
+        .with_pos(150, 364)
         .with_id("check_native");
 
     #[cfg(target_os = "linux")]
@@ -173,8 +287,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     }
 
     let mut check_nvenc = CheckButton::default()
-        .with_size(70, height)
-        .right_of(&check_native_hw_accel, 2 * padding)
+        .with_size(164, height)
+        .with_pos(316, 364)
         .with_label("NVENC")
         .with_id("check_nvenc");
     check_nvenc.set_tooltip("Try to use Nvidia's NVENC to encode the video via GPU.");
@@ -188,49 +302,17 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         check_nvenc.hide();
     }
 
-    let mut but_toggle = Button::default()
-        .with_size(width, height)
-        .below_of(&check_native_hw_accel, 2 * padding)
-        .with_label("Start")
-        .with_id("btn_toggle");
+    page_settings.end();
+    page_settings.hide();
 
-    let mut output_server_addr = Output::default()
-        .with_size(500, height)
-        .below_of(&but_toggle, 3 * padding)
-        .with_label("Connect your\ntablet to:")
-        .with_id("output_addr");
-    output_server_addr.hide();
-
-    let output_buf = TextBuffer::default();
-    let mut output = TextDisplay::default().with_size(600, 6 * height).with_pos(
-        30,
-        output_server_addr.y() + output_server_addr.height() + padding,
-    )
-    .with_id("log_display");
-    output.set_buffer(output_buf);
-    let output_buf = output.buffer().unwrap();
-
-    let mut choice_theme = Choice::default()
-        .with_size(width, height)
-        .right_of(&input_access_code, padding)
-        .with_id("choice_theme");
-
-    for theme in ThemeType::themes() {
-        choice_theme.add_choice(&theme.name());
-    }
-    choice_theme.set_value(config.gui_theme.unwrap_or(ThemeType::default()).to_index());
-
-    let mut qr_frame = Frame::default()
-        .with_size(235, 235)
-        .right_of(&input_bind_addr, padding)
-        .with_id("qr_frame");
-
-    qr_frame.hide();
+    nav_home_btn.set_callback(|_| show_page(true));
+    nav_settings_btn.set_callback(|_| show_page(false));
 
     wind.make_resizable(true);
     wind.end();
     wind.show();
     apply_skin();
+    show_page(true);
 
     let output_buf = Arc::new(Mutex::new(output_buf));
 
@@ -252,7 +334,11 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
             let v = c.value();
             if v >= 0 {
                 ThemeType::from_index(v).apply();
+                let home = app::widget_from_id::<Group>("page_home")
+                    .map(|g| g.visible())
+                    .unwrap_or(true);
                 apply_skin();
+                show_page(home);
                 config.lock().unwrap().gui_theme = Some(ThemeType::from_index(v));
                 write_config(&config.lock().unwrap());
             }
@@ -454,6 +540,58 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
 const BORDER: i32 = 30;
 
+/// Which side page is currently visible (true = home). Kept in a static so the
+/// nav callbacks and the skin can share the state without capturing widgets.
+static HOME_ACTIVE: Mutex<bool> = Mutex::new(true);
+
+/// Switch between the "Главная" (home) and "Настройки" (settings) pages and
+/// restyle the sidebar items to make the active entry obvious.
+fn show_page(home: bool) {
+    if let Some(mut g) = app::widget_from_id::<Group>("page_home") {
+        if home {
+            g.show();
+        } else {
+            g.hide();
+        }
+    }
+    if let Some(mut g) = app::widget_from_id::<Group>("page_settings") {
+        if home {
+            g.hide();
+        } else {
+            g.show();
+        }
+    }
+    *HOME_ACTIVE.lock().unwrap() = home;
+    style_nav_items();
+}
+
+/// Pill-shaped highlight for the active sidebar entry, flat and dimmed for
+/// the inactive ones.
+fn style_nav_items() {
+    let home_active = *HOME_ACTIVE.lock().unwrap();
+    let bg = Color::from_rgb(14, 17, 22);
+    let surface = Color::from_rgb(30, 35, 42);
+    let text = Color::from_rgb(232, 236, 241);
+    let dim = Color::from_rgb(139, 150, 165);
+    for (id, active) in [("nav_home", home_active), ("nav_settings", !home_active)] {
+        if let Some(mut b) = app::widget_from_id::<Button>(id) {
+            if active {
+                b.set_frame(FrameType::RoundedBox);
+                b.set_color(surface);
+                b.set_label_color(text);
+                b.set_label_font(Font::HelveticaBold);
+            } else {
+                b.set_frame(FrameType::FlatBox);
+                b.set_color(bg);
+                b.set_label_color(dim);
+                b.set_label_font(Font::Helvetica);
+            }
+            b.set_label_size(13);
+            b.redraw();
+        }
+    }
+}
+
 /// Modern dark "Clean Sheet" skin applied on top of (or instead of) the
 /// classic fltk themes. Every styled widget is looked up by id, so this can
 /// be re-run at any time - in particular right after a theme switch, which
@@ -502,6 +640,41 @@ fn apply_skin() {
     if let Some(mut f) = app::widget_from_id::<Frame>("head_divider") {
         f.set_frame(FrameType::FlatBox);
         f.set_color(Color::from_rgb(42, 49, 58));
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("nav_caption") {
+        f.set_frame(FrameType::FlatBox);
+        f.set_color(bg);
+        f.set_label_color(dim);
+        f.set_label_size(11);
+        f.set_label_font(Font::HelveticaBold);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("home_caption") {
+        f.set_frame(FrameType::FlatBox);
+        f.set_color(bg);
+        f.set_label_color(text);
+        f.set_label_size(16);
+        f.set_label_font(Font::HelveticaBold);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("sec_skin") {
+        f.set_frame(FrameType::FlatBox);
+        f.set_color(bg);
+        f.set_label_color(dim);
+        f.set_label_size(11);
+        f.set_label_font(Font::HelveticaBold);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("sec_net") {
+        f.set_frame(FrameType::FlatBox);
+        f.set_color(bg);
+        f.set_label_color(dim);
+        f.set_label_size(11);
+        f.set_label_font(Font::HelveticaBold);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("sec_hw") {
+        f.set_frame(FrameType::FlatBox);
+        f.set_color(bg);
+        f.set_label_color(dim);
+        f.set_label_size(11);
+        f.set_label_font(Font::HelveticaBold);
     }
 
     for id in ["input_access", "input_bind"] {

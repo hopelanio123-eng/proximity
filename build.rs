@@ -30,6 +30,12 @@ fn build_ffmpeg(dist_dir: &Path, enable_libnpp: bool) {
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
+    // Local convenience only: skip building/linking the vendored ffmpeg and
+    // the C helpers (e.g. no bash/cmake/mingw around, or iterating on UI code).
+    // Everything still builds as usual when the variable is unset.
+    let skip_ffmpeg_cc =
+        env::var("PROXIMITY_SKIP_FFMPEG_CC").map_or(false, |v| ["y", "yes", "true", "1"].contains(&v.to_lowercase().as_str()));
+
     let dist_dir = Path::new("deps")
         .canonicalize()
         .unwrap()
@@ -40,7 +46,11 @@ fn main() {
     });
 
     if env::var("CARGO_FEATURE_FFMPEG_SYSTEM").is_err() {
-        build_ffmpeg(&dist_dir, enable_libnpp);
+        if skip_ffmpeg_cc {
+            println!("cargo:warning=PROXIMITY_SKIP_FFMPEG_CC=1: skipping vendored ffmpeg build and C helper compilation");
+        } else {
+            build_ffmpeg(&dist_dir, enable_libnpp);
+        }
     }
 
     println!("cargo:rerun-if-changed=ts/lib.ts");
@@ -78,6 +88,9 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=lib/encode_video.c");
+    if skip_ffmpeg_cc {
+        return;
+    }
     let mut cc_video = cc::Build::new();
     cc_video.file("lib/encode_video.c");
     cc_video.include(dist_dir.join("include"));
