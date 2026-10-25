@@ -2,7 +2,7 @@ use std::cmp::min;
 use std::io::Cursor;
 use std::iter::Iterator;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use fltk::app;
 use fltk::draw;
@@ -87,9 +87,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     // Desktop shell: a fixed navigation sidebar plus a page area holding the
     // "Главная" (home) and "Настройки" (settings) views.
-    const NAV_W: i32 = 176;
-    const WIN_W: i32 = 680;
-    const WIN_H: i32 = 660;
+    const NAV_W: i32 = 208;
+    const WIN_W: i32 = 720;
+    const WIN_H: i32 = 720;
     const CONTENT_W: i32 = WIN_W - NAV_W;
     const PAGE_W: i32 = CONTENT_W - 48;
 
@@ -111,53 +111,61 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_id("nav_bar");
 
     Frame::default()
-        .with_size(40, 40)
-        .with_pos(16, 14)
+        .with_size(36, 36)
+        .with_pos(20, 20)
         .with_align(Align::Center | Align::Inside.bits())
         .with_label("P")
         .with_id("brand_mark");
     Frame::default()
-        .with_size(104, 20)
-        .with_pos(64, 17)
+        .with_size(130, 24)
+        .with_pos(66, 16)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("Proximity")
         .with_id("head_title");
     Frame::default()
-        .with_size(104, 14)
-        .with_pos(66, 39)
+        .with_size(130, 14)
+        .with_pos(67, 41)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label(&format!("v{}", env!("CARGO_PKG_VERSION")))
         .with_id("head_sub");
 
     Frame::default()
         .with_size(140, 16)
-        .with_pos(16, 78)
+        .with_pos(20, 94)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("МЕНЮ")
         .with_id("nav_caption");
 
     let mut nav_home_btn = Button::default()
-        .with_size(148, 32)
-        .with_pos(14, 98)
+        .with_size(184, 42)
+        .with_pos(12, 116)
         .with_label("Главная")
         .with_id("nav_home");
     nav_home_btn.draw(|b| draw_nav_item(b, true));
     nav_home_btn.super_draw(false);
     let mut nav_settings_btn = Button::default()
-        .with_size(148, 32)
-        .with_pos(14, 132)
+        .with_size(184, 42)
+        .with_pos(12, 164)
         .with_label("Настройки")
         .with_id("nav_settings");
     nav_settings_btn.draw(|b| draw_nav_item(b, false));
     nav_settings_btn.super_draw(false);
 
     let mut status_pill = Frame::default()
-        .with_size(148, 30)
-        .with_pos(14, WIN_H - 62)
+        .with_size(184, 34)
+        .with_pos(12, WIN_H - 62)
         .with_align(Align::Center | Align::Inside.bits())
-        .with_label("Server offline")
+        .with_label("Сервер выключен")
         .with_id("status_pill");
+    status_pill.draw(draw_status_pill);
+    status_pill.super_draw(false);
     status_pill.set_tooltip("Shows whether the Proximity server is accepting connections.");
+
+    // Perfectly rounded corners for the brand tile.
+    if let Some(mut f) = app::widget_from_id::<Frame>("brand_mark") {
+        f.draw(draw_brand_mark);
+        f.super_draw(false);
+    }
 
     nav_bar.end();
 
@@ -495,9 +503,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                     return Ok(());
                 }
                 is_server_running = true;
+                SERVER_LIVE.store(true, Ordering::Relaxed);
                 if let Some(mut pill) = app::widget_from_id::<Frame>("status_pill") {
-                    pill.set_label("Server live");
-                    pill.set_label_color(Color::from_rgb(52, 211, 153));
+                    pill.set_label("Сервер работает");
                     pill.redraw();
                 }
 
@@ -596,9 +604,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                 qr_frame.resize_callback(|_, _, _, _, _| {});
                 qr_frame.hide();
                 is_server_running = false;
+                SERVER_LIVE.store(false, Ordering::Relaxed);
                 if let Some(mut pill) = app::widget_from_id::<Frame>("status_pill") {
-                    pill.set_label("Server offline");
-                    pill.set_label_color(Color::from_rgb(139, 150, 165));
+                    pill.set_label("Сервер выключен");
                     pill.redraw();
                 }
             }
@@ -677,7 +685,6 @@ fn apply_skin() {
     let bg = Color::from(skin.bg_end);
     let nav_bg = Color::from(skin.nav_bg);
     let surface = Color::from(skin.surface);
-    let pill = Color::from(skin.pill);
     let accent = Color::from(skin.accent);
     let accent_pressed = Color::from(skin.accent_pressed);
     let text = Color::from(skin.text);
@@ -702,27 +709,20 @@ fn apply_skin() {
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("head_title") {
         f.set_label_font(Font::HelveticaBold);
-        f.set_label_size(22);
+        f.set_label_size(20);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("head_sub") {
-        f.set_label_size(12);
+        f.set_label_size(11);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("label_hw") {
         f.set_label_size(13);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("brand_mark") {
-        f.set_frame(FrameType::RoundedBox);
-        f.set_color(accent);
-        f.set_label_color(Color::White);
         f.set_label_font(Font::HelveticaBold);
-        f.set_label_size(20);
+        f.set_label_size(18);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("status_pill") {
-        f.set_frame(FrameType::RoundedBox);
-        f.set_color(pill);
         f.set_label_size(12);
-        f.set_label_font(Font::HelveticaBold);
-        f.set_label_color(dim);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("head_divider") {
         f.set_frame(FrameType::FlatBox);
@@ -811,7 +811,7 @@ fn apply_skin() {
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("nav_caption") {
         f.set_label_color(dim);
-        f.set_label_size(11);
+        f.set_label_size(10);
         f.set_label_font(Font::HelveticaBold);
         f.redraw();
     }
@@ -905,49 +905,92 @@ fn draw_page_glow(f: &mut Frame) {
 }
 
 /// Sidebar entry: a pill for the active page plus a small vector icon (house
-/// for home, sliders for settings) matching the launcher screenshot.
+/// for home, sliders for settings). Hovering lifts the pill so the sidebar
+/// feels alive, the active entry keeps a small accent bar.
 fn draw_nav_item(b: &mut Button, home: bool) {
     let skin = skin();
     let active = *HOME_ACTIVE.lock().unwrap() == home;
+    let hovered = app::belowmouse::<Button>()
+        .map(|w| w.as_widget_ptr() == b.as_widget_ptr())
+        .unwrap_or(false);
     let (x, y) = (b.x(), b.y());
     let (w, h) = (b.w(), b.h());
+    let cy = y + h / 2;
     if active {
         draw::set_draw_color(Color::from(skin.pill));
-        draw::draw_rounded_rectf(x, y, w, h, 10);
-        draw::set_draw_color(Color::from(skin.text));
-    } else {
-        draw::set_draw_color(Color::from(skin.dim));
+        draw::draw_rounded_rectf(x, y, w, h, 12);
+        draw::set_draw_color(Color::from(skin.accent));
+        draw::draw_rounded_rectf(x + 10, cy - 9, 3, 18, 2);
+    } else if hovered {
+        draw::set_draw_color(Color::from(skin.nav_bg.mix(skin.pill, 450)));
+        draw::draw_rounded_rectf(x, y, w, h, 12);
     }
-    let icon_color = draw::get_color();
-    draw::set_font(Font::HelveticaBold, 13);
-    let icon_x = x + 24;
+    let icon_color = if active {
+        Color::from(skin.accent)
+    } else if hovered {
+        Color::from(skin.text)
+    } else {
+        Color::from(skin.dim)
+    };
+    draw::set_draw_color(icon_color);
+    let icon_x = x + 30;
     if home {
-        // House: roof triangle, body square and a door notch in the bg color.
-        let cy = y + h / 2;
+        // House: roof triangle, body square and a door notch in the pill.
         draw::draw_polygon(icon_x, cy - 8, icon_x - 8, cy - 1, icon_x + 8, cy - 1);
         draw::draw_rectf(icon_x - 6, cy - 1, 12, 9);
         draw::set_draw_color(if active {
             Color::from(skin.pill)
+        } else if hovered {
+            Color::from(skin.nav_bg.mix(skin.pill, 450))
         } else {
             Color::from(skin.nav_bg)
         });
         draw::draw_rectf(icon_x - 2, cy + 3, 4, 5);
     } else {
         // Sliders: three lines with moved knobs.
-        let cy = y + h / 2;
         for (offset, knob) in [(-6, icon_x + 2), (0, icon_x - 3), (6, icon_x + 4)] {
             let line_y = cy + offset;
             draw::draw_line(icon_x - 8, line_y, icon_x + 8, line_y);
             draw::draw_circle_fill(knob, line_y, 6, icon_color);
         }
     }
-    draw::set_draw_color(if active {
+    let label_color = if active || hovered {
         Color::from(skin.text)
     } else {
         Color::from(skin.dim)
-    });
+    };
+    draw::set_draw_color(label_color);
     draw::set_font(Font::HelveticaBold, 13);
-    draw::draw_text(&b.label(), x + 44, y + 9);
+    draw::draw_text(&b.label(), x + 52, cy + 5);
+}
+
+/// Brand tile: a rounded accent square with the initial.
+fn draw_brand_mark(f: &mut Frame) {
+    let skin = skin();
+    let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
+    draw::set_draw_color(Color::from(skin.accent));
+    draw::draw_rounded_rectf(x, y, w, h, 10);
+    draw::set_font(Font::HelveticaBold, 18);
+    draw::set_draw_color(Color::White);
+    draw::draw_text2(&f.label(), x, y, w, h, Align::Center);
+}
+
+/// Whether the proximity server is currently accepting connections.
+static SERVER_LIVE: AtomicBool = AtomicBool::new(false);
+
+/// Status pill at the bottom of the sidebar: colored dot plus a short state.
+fn draw_status_pill(f: &mut Frame) {
+    let skin = skin();
+    let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
+    let live = SERVER_LIVE.load(Ordering::Relaxed);
+    draw::set_draw_color(Color::from(skin.pill));
+    draw::draw_rounded_rectf(x, y, w, h, h / 2);
+    let dot = if live { skin.success } else { skin.dim };
+    draw::set_draw_color(Color::from(dot));
+    draw::draw_circle_fill(x + 18, y + h / 2, 8, Color::from(dot));
+    draw::set_draw_color(Color::from(if live { skin.text } else { skin.dim }));
+    draw::set_font(Font::HelveticaBold, 12);
+    draw::draw_text(&f.label(), x + 32, y + h / 2 + 4);
 }
 static WINCTX: Mutex<Option<InputAreaWindowContext>> = Mutex::new(None);
 
