@@ -79,6 +79,14 @@ pub struct Skin {
     pub text: Rgb24,
     pub dim: Rgb24,
     pub log_text: Rgb24,
+    /// Hairline around cards and fields.
+    pub border: Rgb24,
+    /// Slot of a switch that is off.
+    pub track: Rgb24,
+    /// Status dot when the server is running.
+    pub success: Rgb24,
+    /// Status dot for errors / destructive accents.
+    pub danger: Rgb24,
     pub light: bool,
 }
 
@@ -115,6 +123,15 @@ impl Skin {
                 Rgb24::hex(0xa0aab6),
             )
         };
+        // Chrome derived from the surface: a hairline that reads on both
+        // bright and dark palettes, plus the recessed slot of a switch.
+        let border = p.surface.mix(towards, 90);
+        let track = p.surface.mix(towards, 170);
+        let (success, danger) = if p.light {
+            (Rgb24::hex(0x1a7f37), Rgb24::hex(0xcf222e))
+        } else {
+            (Rgb24::hex(0x3fb950), Rgb24::hex(0xf85149))
+        };
         Skin {
             bg_start,
             bg_end: p.bg,
@@ -127,6 +144,10 @@ impl Skin {
             text,
             dim,
             log_text,
+            border,
+            track,
+            success,
+            danger,
             light: p.light,
         }
     }
