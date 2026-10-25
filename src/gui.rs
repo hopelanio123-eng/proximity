@@ -100,6 +100,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     wind.set_frame(FrameType::FlatBox);
     wind.set_color(Color::from_rgb(14, 17, 22));
     wind.set_id("main_window");
+    // The layout is laid out in absolute pixels, so the shell keeps a fixed
+    // size instead of stretching the cards.
+    wind.size_range(WIN_W, WIN_H, WIN_W, WIN_H);
 
     // --- Sidebar with the "Главная" / "Настройки" navigation --------------
     let mut nav_bar = Group::default()
@@ -231,7 +234,14 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     label_addr.hide();
 
     let mut output_server_addr = Output::default()
-        .with_size(216, 40)
+        .with_size(
+            if cfg!(target_os = "linux") {
+                216
+            } else {
+                PAGE_W - 40
+            },
+            40,
+        )
         .with_pos(PAD + 20, 228)
         .with_label("")
         .with_id("output_addr");
@@ -243,12 +253,16 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_id("qr_frame");
     qr_frame.hide();
 
-    Frame::default()
+    let mut qr_hint = Frame::default()
         .with_size(180, 180)
         .with_pos(PAD + 256, 142)
         .with_align(Align::Center | Align::Inside.bits())
         .with_label("QR-код появится\nпосле запуска")
         .with_id("qr_hint");
+    // The Windows and macOS builds never show a QR code.
+    if !cfg!(target_os = "linux") {
+        qr_hint.hide();
+    }
 
     Frame::default()
         .with_size(PAGE_W, 14)
@@ -256,6 +270,13 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("ЖУРНАЛ")
         .with_id("log_caption");
+
+    Frame::default()
+        .with_size(PAGE_W, 14)
+        .with_pos(PAD, 368)
+        .with_align(Align::Right | Align::Inside.bits())
+        .with_label("СООБЩЕНИЯ СЕРВЕРА")
+        .with_id("log_hint");
 
     let output_buf = TextBuffer::default();
     let mut output = TextDisplay::default()
@@ -674,7 +695,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                     f.hide();
                 }
                 if let Some(mut f) = app::widget_from_id::<Frame>("qr_hint") {
-                    f.hide();
+                    if cfg!(target_os = "linux") {
+                        f.hide();
+                    }
                 }
                 if let Some(mut f) = app::widget_from_id::<Frame>("label_addr") {
                     f.show();
@@ -689,7 +712,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                     f.show();
                 }
                 if let Some(mut f) = app::widget_from_id::<Frame>("qr_hint") {
-                    f.show();
+                    if cfg!(target_os = "linux") {
+                        f.show();
+                    }
                 }
                 if let Some(mut f) = app::widget_from_id::<Frame>("label_addr") {
                     f.hide();
@@ -920,6 +945,11 @@ fn apply_skin() {
             f.set_label_size(10);
         }
     }
+    if let Some(mut f) = app::widget_from_id::<Frame>("log_hint") {
+        f.set_frame(FrameType::NoBox);
+        f.set_label_color(dim);
+        f.set_label_size(10);
+    }
 
     // Decorative captions sit directly on the glow backdrop, so they must not
     // paint their own rectangle; pages hold the backdrop as first child.
@@ -1035,12 +1065,14 @@ fn draw_primary_button(b: &mut Button) {
         .map(|w| w.as_widget_ptr() == b.as_widget_ptr())
         .unwrap_or(false);
     let (x, y, w, h) = (b.x(), b.y(), b.w(), b.h());
+    let live = SERVER_LIVE.load(Ordering::Relaxed);
+    let base_color = if live { skin.danger } else { skin.accent };
     let base = if b.value() {
-        skin.accent.mix(Rgb24::hex(0x000000), 180)
+        base_color.mix(Rgb24::hex(0x000000), 180)
     } else if hovered {
-        skin.accent.mix(Rgb24::hex(0xffffff), 90)
+        base_color.mix(Rgb24::hex(0xffffff), 90)
     } else {
-        skin.accent
+        base_color
     };
     draw::set_draw_color(Color::from(base));
     draw::draw_rounded_rectf(x, y, w, h, h / 2);
