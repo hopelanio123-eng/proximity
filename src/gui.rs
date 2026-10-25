@@ -47,20 +47,38 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     wind.set_id("main_window");
 
     Frame::default()
-        .with_size(620, 30)
-        .with_pos(20, 18)
+        .with_size(390, 32)
+        .with_pos(74, 12)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("Proximity")
         .with_id("head_title");
     Frame::default()
-        .with_size(620, 16)
-        .with_pos(22, 50)
+        .with_size(390, 16)
+        .with_pos(76, 44)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label(&format!(
             "v{} - control your PC from any device with a browser",
             env!("CARGO_PKG_VERSION")
         ))
         .with_id("head_sub");
+
+    Frame::default()
+        .with_size(42, 42)
+        .with_pos(20, 14)
+        .with_align(Align::Center | Align::Inside.bits())
+        .with_label("P")
+        .with_id("brand_mark");
+    let mut status_pill = Frame::default()
+        .with_size(162, 34)
+        .with_pos(478, 18)
+        .with_align(Align::Center | Align::Inside.bits())
+        .with_label("Server offline")
+        .with_id("status_pill");
+    status_pill.set_tooltip("Shows whether the Proximity server is accepting connections.");
+    Frame::default()
+        .with_size(620, 1)
+        .with_pos(20, 76)
+        .with_id("head_divider");
 
     let mut input_access_code = Input::default()
         .with_pos(130, 100)
@@ -308,6 +326,11 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                     return Ok(());
                 }
                 is_server_running = true;
+                if let Some(mut pill) = app::widget_from_id::<Frame>("status_pill") {
+                    pill.set_label("Server live");
+                    pill.set_label_color(Color::from_rgb(52, 211, 153));
+                    pill.redraw();
+                }
 
                 write_config(&config);
 
@@ -404,6 +427,11 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                 qr_frame.resize_callback(|_, _, _, _, _| {});
                 qr_frame.hide();
                 is_server_running = false;
+                if let Some(mut pill) = app::widget_from_id::<Frame>("status_pill") {
+                    pill.set_label("Server offline");
+                    pill.set_label_color(Color::from_rgb(139, 150, 165));
+                    pill.redraw();
+                }
             }
             Ok(())
         }() {
@@ -457,6 +485,23 @@ fn apply_skin() {
     if let Some(mut f) = app::widget_from_id::<Frame>("label_hw") {
         f.set_label_color(text);
         f.set_label_size(13);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("brand_mark") {
+        f.set_frame(FrameType::RoundedBox);
+        f.set_color(accent);
+        f.set_label_color(Color::White);
+        f.set_label_font(Font::HelveticaBold);
+        f.set_label_size(20);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("status_pill") {
+        f.set_frame(FrameType::RoundedBox);
+        f.set_color(surface);
+        f.set_label_size(12);
+        f.set_label_font(Font::HelveticaBold);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("head_divider") {
+        f.set_frame(FrameType::FlatBox);
+        f.set_color(Color::from_rgb(42, 49, 58));
     }
 
     for id in ["input_access", "input_bind"] {
