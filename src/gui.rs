@@ -385,10 +385,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     wind.show();
     // First paint with the palette from the config (or the default), then
     // show the home page.
-    let configured = config.gui_theme.as_deref().and_then(palette_by_name);
-    *SKIN.lock().unwrap() = Some(Skin::from_palette(configured.unwrap_or(DEFAULT_PALETTE)));
-    apply_skin();
-    show_page(true);
+    apply_palette(config.gui_theme.as_deref());
 
     let output_buf = Arc::new(Mutex::new(output_buf));
 
