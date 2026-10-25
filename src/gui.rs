@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicBool;
 
 use fltk::app;
 use fltk::draw;
-use fltk::enums::{Align, Color, Font, FrameType, LabelType};
+use fltk::enums::{Align, Color, Font, FrameType, LabelType, UnmappedFrameType};
 use fltk::image::PngImage;
 use fltk::menu::Choice;
 use std::sync::{mpsc, Arc, Mutex};
@@ -72,6 +72,18 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let width = 200;
     let height = 30;
     let padding = 10;
+
+    // Rounded chrome used by the cards, fields and the log panel.
+    app::set_frame_type_cb(
+        field_frame(),
+        draw_field_box,
+        FIELD_PAD_X,
+        FIELD_PAD_Y,
+        2 * FIELD_PAD_X,
+        2 * FIELD_PAD_Y,
+    );
+    app::set_frame_type_cb(card_frame(), draw_card_box, 0, 0, 0, 0);
+    app::set_frame_type_cb(log_frame(), draw_log_box, 12, 10, 24, 20);
 
     // Desktop shell: a fixed navigation sidebar plus a page area holding the
     // "Главная" (home) and "Настройки" (settings) views.
@@ -826,6 +838,52 @@ fn apply_skin() {
             f.set_frame(FrameType::NoBox);
         }
     }
+}
+
+/// FLTK keeps a range of free box-type slots; the redesign registers its
+/// rounded chrome boxes there instead of painting every widget by hand.
+fn free_frame(offset: i32) -> FrameType {
+    let base = FrameType::FreeBoxType.as_i32();
+    // Safety: `from_i32` only wraps the box index, which FLTK stores as-is.
+    unsafe { FrameType::UserFrameType(UnmappedFrameType::from_i32(base + offset)) }
+}
+
+/// Inner padding of the field box, in pixels (left, top and the sums).
+const FIELD_PAD_X: i32 = 14;
+const FIELD_PAD_Y: i32 = 9;
+
+fn field_frame() -> FrameType {
+    free_frame(0)
+}
+fn card_frame() -> FrameType {
+    free_frame(1)
+}
+fn log_frame() -> FrameType {
+    free_frame(2)
+}
+
+fn draw_field_box(x: i32, y: i32, w: i32, h: i32, color: Color) {
+    let skin = skin();
+    draw::set_draw_color(color);
+    draw::draw_rounded_rectf(x, y, w, h, 10);
+    draw::set_draw_color(Color::from(skin.border));
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, 10);
+}
+
+fn draw_card_box(x: i32, y: i32, w: i32, h: i32, color: Color) {
+    let skin = skin();
+    draw::set_draw_color(color);
+    draw::draw_rounded_rectf(x, y, w, h, 14);
+    draw::set_draw_color(Color::from(skin.border));
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, 14);
+}
+
+fn draw_log_box(x: i32, y: i32, w: i32, h: i32, color: Color) {
+    let skin = skin();
+    draw::set_draw_color(color);
+    draw::draw_rounded_rectf(x, y, w, h, 12);
+    draw::set_draw_color(Color::from(skin.border));
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, 12);
 }
 
 /// Ambient glow backdrop for a page: the palette's tinted top fades into the
