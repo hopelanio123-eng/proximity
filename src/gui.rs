@@ -69,10 +69,6 @@ fn apply_palette(name: Option<&str>) {
 }
 
 pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
-    let width = 200;
-    let height = 30;
-    let padding = 10;
-
     // Rounded chrome used by the cards, fields and the log panel.
     app::set_frame_type_cb(
         field_frame(),
@@ -289,17 +285,31 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     settings_glow.super_draw(false);
 
     Frame::default()
-        .with_size(PAGE_W, 16)
-        .with_pos(24, 18)
+        .with_size(PAGE_W, 14)
+        .with_pos(PAD, 26)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("ОФОРМЛЕНИЕ")
         .with_id("sec_skin");
 
+    Frame::default()
+        .with_size(PAGE_W, 92)
+        .with_pos(PAD, 46)
+        .with_id("card_skin");
+
+    Frame::default()
+        .with_size(240, 14)
+        .with_pos(PAD + 18, 62)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("ТЕМА")
+        .with_id("theme_label");
+
     let mut choice_theme = Choice::default()
-        .with_size(330, height)
-        .with_pos(150, 40)
-        .with_label("Theme")
+        .with_size(PAGE_W - 36, 40)
+        .with_pos(PAD + 18, 80)
+        .with_label("")
         .with_id("choice_theme");
+    choice_theme.draw(draw_choice);
+    choice_theme.super_draw(false);
 
     for palette in PALETTES {
         choice_theme.add_choice(palette.name);
@@ -317,16 +327,33 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     );
 
     Frame::default()
-        .with_size(PAGE_W, 16)
-        .with_pos(24, 90)
+        .with_size(PAGE_W, 14)
+        .with_pos(PAD, 160)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("СЕТЬ И ДОСТУП")
         .with_id("sec_net");
 
+    Frame::default()
+        .with_size(PAGE_W, 292)
+        .with_pos(PAD, 180)
+        .with_id("card_net");
+
+    for (id, label, y) in [
+        ("label_access", "КОД ДОСТУПА", 196),
+        ("label_bind", "АДРЕС ПРИВЯЗКИ", 270),
+        ("label_port", "ПОРТ", 344),
+    ] {
+        Frame::default()
+            .with_size(300, 14)
+            .with_pos(PAD + 18, y)
+            .with_align(Align::Left | Align::Inside.bits())
+            .with_label(label)
+            .with_id(id);
+    }
+
     let mut input_access_code = Input::default()
-        .with_pos(150, 112)
-        .with_size(330, height)
-        .with_label("Access code")
+        .with_pos(PAD + 18, 214)
+        .with_size(PAGE_W - 36, 40)
         .with_id("input_access");
     input_access_code.set_tooltip(
         "Restrict who can control your computer with an access code. Note that this does NOT do \
@@ -339,35 +366,37 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     }
 
     let mut input_bind_addr = Input::default()
-        .with_size(330, height)
-        .with_pos(150, 150)
-        .with_label("Bind Address")
+        .with_size(PAGE_W - 36, 40)
+        .with_pos(PAD + 18, 288)
         .with_id("input_bind");
     input_bind_addr.set_value(&config.bind_address.to_string());
 
     let mut input_port = IntInput::default()
-        .with_size(330, height)
-        .with_pos(150, 188)
-        .with_label("Port")
+        .with_size(PAGE_W - 36, 40)
+        .with_pos(PAD + 18, 362)
         .with_id("input_port");
     input_port.set_value(&config.web_port.to_string());
 
     let mut check_auto_start = CheckButton::default()
-        .with_size(330, height)
-        .with_pos(150, 228)
-        .with_label("Auto Start")
+        .with_size(PAGE_W - 36, 36)
+        .with_pos(PAD + 18, 420)
+        .with_label("Автозапуск")
         .with_id("check_auto");
+    check_auto_start.draw(draw_switch);
+    check_auto_start.super_draw(false);
     check_auto_start.set_tooltip("Start Proximity server immediately on program start.");
     check_auto_start.set_checked(config.auto_start);
 
     #[cfg(target_os = "linux")]
     let mut check_wayland = CheckButton::default()
-        .with_size(330, height)
-        .with_pos(150, 258)
-        .with_label("Wayland / PipeWire Support")
+        .with_size(PAGE_W - 36, 40)
+        .with_pos(PAD + 18, 584)
+        .with_label("Wayland / PipeWire")
         .with_id("check_wayland");
     #[cfg(target_os = "linux")]
     {
+        check_wayland.draw(draw_switch);
+        check_wayland.super_draw(false);
         check_wayland.set_tooltip(
             "EXPERIMENTAL! This may crash your desktop! Enables screen \
         capturing for Wayland using PipeWire and GStreamer.",
@@ -376,27 +405,24 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     }
 
     Frame::default()
-        .with_size(PAGE_W, 16)
-        .with_pos(24, 312)
+        .with_size(PAGE_W, 14)
+        .with_pos(PAD, 496)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("УСКОРЕНИЕ")
         .with_id("sec_hw");
 
-    let mut label_hw_accel = Frame::default()
-        .with_size(330, height)
-        .with_pos(150, 334)
-        .with_label("Try Hardware acceleration")
-        .with_id("label_hw");
-    label_hw_accel.set_tooltip(
-        "On many systems video encoding can be done with hardware \
-        acceleration. By default this is disabled as the quality and stability of video encoding \
-        varies greatly among hardware and drivers. Currently this is only supported on Linux.",
-    );
+    let hw_card_h = if cfg!(target_os = "linux") { 144 } else { 96 };
+    Frame::default()
+        .with_size(PAGE_W, hw_card_h)
+        .with_pos(PAD, 516)
+        .with_id("card_hw");
 
     let mut check_native_hw_accel = CheckButton::default()
-        .with_size(160, height)
-        .with_pos(150, 364)
+        .with_size(200, 40)
+        .with_pos(PAD + 18, 536)
         .with_id("check_native");
+    check_native_hw_accel.draw(draw_switch);
+    check_native_hw_accel.super_draw(false);
 
     #[cfg(target_os = "linux")]
     {
@@ -416,17 +442,19 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     #[cfg(target_os = "windows")]
     {
-        check_native_hw_accel.set_label("Media-\nFoundation");
+        check_native_hw_accel.set_label("Media Foundation");
         check_native_hw_accel
             .set_tooltip("Try to use hardware acceleration through the MediaFoundation API.");
         check_native_hw_accel.set_checked(config.try_mediafoundation);
     }
 
     let mut check_nvenc = CheckButton::default()
-        .with_size(164, height)
-        .with_pos(316, 364)
+        .with_size(200, 40)
+        .with_pos(PAD + 226, 536)
         .with_label("NVENC")
         .with_id("check_nvenc");
+    check_nvenc.draw(draw_switch);
+    check_nvenc.super_draw(false);
     check_nvenc.set_tooltip("Try to use Nvidia's NVENC to encode the video via GPU.");
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -764,7 +792,7 @@ fn apply_skin() {
         g.set_frame(FrameType::FlatBox);
         g.set_color(nav_bg);
     }
-    for id in ["head_title", "head_sub", "label_hw"] {
+    for id in ["head_title", "head_sub"] {
         if let Some(mut f) = app::widget_from_id::<Frame>(id) {
             f.set_frame(FrameType::NoBox);
             f.set_label_color(text);
@@ -777,8 +805,20 @@ fn apply_skin() {
     if let Some(mut f) = app::widget_from_id::<Frame>("head_sub") {
         f.set_label_size(11);
     }
-    if let Some(mut f) = app::widget_from_id::<Frame>("label_hw") {
-        f.set_label_size(13);
+    // Cards and their captions on the settings page.
+    for id in ["card_skin", "card_net", "card_hw"] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_frame(card_frame());
+            f.set_color(surface);
+        }
+    }
+    for id in ["theme_label", "label_access", "label_bind", "label_port"] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_frame(FrameType::NoBox);
+            f.set_label_color(dim);
+            f.set_label_font(Font::HelveticaBold);
+            f.set_label_size(10);
+        }
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("brand_mark") {
         f.set_label_font(Font::HelveticaBold);
@@ -811,9 +851,8 @@ fn apply_skin() {
     }
     for id in ["input_access", "input_bind"] {
         if let Some(mut w) = app::widget_from_id::<Input>(id) {
-            w.set_frame(FrameType::FlatBox);
+            w.set_frame(field_frame());
             w.set_color(surface);
-            w.set_label_color(dim);
             w.set_text_color(text);
             w.set_text_font(Font::Helvetica);
             w.set_text_size(13);
@@ -821,18 +860,15 @@ fn apply_skin() {
         }
     }
     if let Some(mut w) = app::widget_from_id::<IntInput>("input_port") {
-        w.set_frame(FrameType::FlatBox);
+        w.set_frame(field_frame());
         w.set_color(surface);
-        w.set_label_color(dim);
         w.set_text_color(text);
         w.set_text_font(Font::Helvetica);
         w.set_text_size(13);
         w.set_cursor_color(accent);
     }
     if let Some(mut c) = app::widget_from_id::<Choice>("choice_theme") {
-        c.set_frame(FrameType::FlatBox);
         c.set_color(surface);
-        c.set_label_color(dim);
         c.set_text_color(text);
         c.set_text_size(13);
         c.redraw();
@@ -843,6 +879,7 @@ fn apply_skin() {
             c.set_label_size(13);
             c.set_color(surface);
             c.set_selection_color(accent);
+            c.redraw();
         }
     }
     if let Some(mut t) = app::widget_from_id::<TextDisplay>("log_display") {
@@ -908,7 +945,7 @@ fn apply_skin() {
     for id in ["sec_skin", "sec_net", "sec_hw"] {
         if let Some(mut f) = app::widget_from_id::<Frame>(id) {
             f.set_label_color(dim);
-            f.set_label_size(11);
+            f.set_label_size(10);
             f.set_label_font(Font::HelveticaBold);
         }
     }
@@ -1010,6 +1047,60 @@ fn draw_primary_button(b: &mut Button) {
     draw::set_font(Font::HelveticaBold, 15);
     draw::set_draw_color(Color::White);
     draw::draw_text2(&b.label(), x, y, w, h, Align::Center);
+}
+
+/// Theme picker: a field-shaped pill showing the active palette plus a
+/// chevron; the popup itself is handled by FLTK.
+fn draw_choice(c: &mut Choice) {
+    let skin = skin();
+    let hovered = app::belowmouse::<Choice>()
+        .map(|w| w.as_widget_ptr() == c.as_widget_ptr())
+        .unwrap_or(false);
+    let (x, y, w, h) = (c.x(), c.y(), c.w(), c.h());
+    draw::set_draw_color(Color::from(if hovered {
+        skin.pill
+    } else {
+        skin.surface
+    }));
+    draw::draw_rounded_rectf(x, y, w, h, 10);
+    draw::set_draw_color(Color::from(skin.border));
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, 10);
+    let label = c.text(c.value().max(0)).unwrap_or_default();
+    draw::set_font(Font::Helvetica, 13);
+    draw::set_draw_color(Color::from(skin.text));
+    draw::draw_text(&label, x + 14, y + h / 2 + 5);
+    let cx = x + w - 20;
+    let cy = y + h / 2;
+    draw::set_draw_color(Color::from(skin.dim));
+    draw::draw_line(cx - 4, cy - 2, cx, cy + 2);
+    draw::draw_line(cx, cy + 2, cx + 4, cy - 2);
+}
+
+/// Toggle switch drawn in place of the stock check box: an accent track with
+/// a knob for "on" and a recessed slot for "off".
+fn draw_switch(c: &mut CheckButton) {
+    let skin = skin();
+    let on = c.is_checked();
+    let (x, y, h) = (c.x(), c.y(), c.h());
+    let track_w = 40;
+    let track_h = 22;
+    let ty = y + (h - track_h) / 2;
+    draw::set_draw_color(Color::from(if on { skin.accent } else { skin.track }));
+    draw::draw_rounded_rectf(x, ty, track_w, track_h, track_h / 2);
+    let d = track_h - 6;
+    let kx = if on { x + track_w - d - 3 } else { x + 3 };
+    let knob = if on {
+        Color::White
+    } else {
+        Color::from(skin.dim)
+    };
+    draw::set_draw_color(knob);
+    draw::draw_circle_fill(kx + d / 2, ty + track_h / 2, d, knob);
+    if !c.label().is_empty() {
+        draw::set_font(Font::Helvetica, 13);
+        draw::set_draw_color(Color::from(if c.active() { skin.text } else { skin.dim }));
+        draw::draw_text(&c.label(), x + track_w + 12, y + h / 2 + 5);
+    }
 }
 
 /// Sidebar entry: a pill for the active page plus a small vector icon (house
