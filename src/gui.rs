@@ -59,7 +59,10 @@ fn apply_palette(name: Option<&str>) {
     }
     *SKIN.lock().unwrap() = Some(Skin::from_palette(palette));
     apply_skin();
-    show_page(*HOME_ACTIVE.lock().unwrap());
+    // Read the flag first: passing the lock guard straight into show_page()
+    // would keep HOME_ACTIVE locked while show_page() locks it again.
+    let home = *HOME_ACTIVE.lock().unwrap();
+    show_page(home);
     if let Some(mut w) = app::widget_from_id::<Window>("main_window") {
         w.redraw();
     }
