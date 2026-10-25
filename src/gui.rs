@@ -127,12 +127,14 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_label("Главная")
         .with_id("nav_home");
     nav_home_btn.draw(|b| draw_nav_item(b, true));
+    nav_home_btn.super_draw(false);
     let mut nav_settings_btn = Button::default()
         .with_size(148, 32)
         .with_pos(14, 132)
         .with_label("Настройки")
         .with_id("nav_settings");
     nav_settings_btn.draw(|b| draw_nav_item(b, false));
+    nav_settings_btn.super_draw(false);
 
     let mut status_pill = Frame::default()
         .with_size(148, 30)
@@ -163,6 +165,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_pos(0, 0)
         .with_id("page_glow_home");
     home_glow.draw(draw_page_glow);
+    home_glow.super_draw(false);
 
     Frame::default()
         .with_size(PAGE_W, 40)
@@ -215,6 +218,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_pos(0, 0)
         .with_id("page_glow_settings");
     settings_glow.draw(draw_page_glow);
+    settings_glow.super_draw(false);
 
     Frame::default()
         .with_size(PAGE_W, 16)
