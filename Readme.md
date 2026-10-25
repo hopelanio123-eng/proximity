@@ -44,6 +44,23 @@ Easiest is the bundled GitHub Actions workflow (manual `workflow_dispatch`):
 it builds the Windows binary (mingw cross-compile), the Linux binary and a deb
 inside the official `hhmhh/weylus_build:latest` container and uploads artifacts.
 
+### Windows / MSVC (local)
+
+A native MSVC build works too; it needs an FFmpeg distribution with headers,
+import libraries and DLLs. The `ffmpeg-system` feature links against
+`deps/dist_windows`, so put the FFmpeg `include/`, `lib/` and `bin/` trees
+there (a BtbN or gyan.dev Windows build works) and run:
+
+```powershell
+$env:RUSTFLAGS = "-L deps\dist_windows\lib"
+cargo build --features ffmpeg-system,fltk/fltk-bundled
+```
+
+`fltk/fltk-bundled` compiles FLTK from source, so no system FLTK is needed.
+Copy the FFmpeg DLLs next to the resulting `proximity.exe`. When iterating on
+UI code, `PROXIMITY_SKIP_FFMPEG_CC=1` lets `cargo check` skip the C helpers
+and the vendored FFmpeg build, but a full `cargo build` needs them.
+
 Log level can be tuned with the `PROXIMITY_LOG_LEVEL` and `PROXIMITY_LOG_JSON`
 environment variables.
 
