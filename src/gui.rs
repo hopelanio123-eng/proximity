@@ -29,7 +29,7 @@ use pnet_datalink as datalink;
 
 use crate::config::{write_config, Config};
 use crate::protocol::{CustomInputAreas, Rect};
-use crate::theme::{palette_by_name, Skin, DEFAULT_PALETTE, PALETTES};
+use crate::theme::{palette_by_name, Rgb24, Skin, DEFAULT_PALETTE, PALETTES};
 use crate::web::Web2UiMessage::UInputInaccessible;
 
 /// The active palette, kept globally so the custom draw callbacks of the
@@ -91,7 +91,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     const WIN_W: i32 = 720;
     const WIN_H: i32 = 720;
     const CONTENT_W: i32 = WIN_W - NAV_W;
-    const PAGE_W: i32 = CONTENT_W - 48;
+    const PAD: i32 = 28;
+    const PAGE_W: i32 = CONTENT_W - 2 * PAD;
 
     let app = App::default().with_scheme(fltk::app::AppScheme::Gtk);
     let mut wind = Window::default()
@@ -191,35 +192,79 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     home_glow.super_draw(false);
 
     Frame::default()
-        .with_size(PAGE_W, 40)
-        .with_pos(24, 18)
+        .with_size(PAGE_W, 62)
+        .with_pos(PAD, 24)
+        .with_align(Align::Left | Align::Top | Align::Inside.bits())
+        .with_label("Управляй компьютером\nиз любого браузера")
+        .with_id("hero_title");
+
+    Frame::default()
+        .with_size(PAGE_W, 18)
+        .with_pos(PAD, 92)
         .with_align(Align::Left | Align::Inside.bits())
-        .with_label("Control your PC from any device\nwith a browser.")
-        .with_id("home_caption");
+        .with_label("Запусти сервер и открой адрес на телефоне")
+        .with_id("hero_sub");
+
+    // Server card: state, primary action, connect address and the QR code.
+    Frame::default()
+        .with_size(PAGE_W, 220)
+        .with_pos(PAD, 124)
+        .with_id("server_card");
+
+    let mut but_toggle = Button::default()
+        .with_size(200, 46)
+        .with_pos(PAD + 20, 146)
+        .with_label("Запустить")
+        .with_id("btn_toggle");
+    but_toggle.draw(draw_primary_button);
+    but_toggle.super_draw(false);
+
+    Frame::default()
+        .with_size(216, 18)
+        .with_pos(PAD + 20, 212)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("Сервер не запущен")
+        .with_id("offline_hint");
+
+    let mut label_addr = Frame::default()
+        .with_size(216, 16)
+        .with_pos(PAD + 20, 210)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("АДРЕС ДЛЯ ПОДКЛЮЧЕНИЯ")
+        .with_id("label_addr");
+    label_addr.hide();
 
     let mut output_server_addr = Output::default()
-        .with_size(330, height)
-        .with_pos(150, 76)
-        .with_label("Connect to:")
+        .with_size(216, 40)
+        .with_pos(PAD + 20, 228)
+        .with_label("")
         .with_id("output_addr");
     output_server_addr.hide();
 
-    let mut but_toggle = Button::default()
-        .with_size(150, 34)
-        .with_pos(150, 114)
-        .with_label("Start")
-        .with_id("btn_toggle");
-
     let mut qr_frame = Frame::default()
-        .with_size(235, 235)
-        .with_pos(245, 114)
+        .with_size(180, 180)
+        .with_pos(PAD + 256, 142)
         .with_id("qr_frame");
     qr_frame.hide();
 
+    Frame::default()
+        .with_size(180, 180)
+        .with_pos(PAD + 256, 142)
+        .with_align(Align::Center | Align::Inside.bits())
+        .with_label("QR-код появится\nпосле запуска")
+        .with_id("qr_hint");
+
+    Frame::default()
+        .with_size(PAGE_W, 14)
+        .with_pos(PAD, 368)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("ЖУРНАЛ")
+        .with_id("log_caption");
+
     let output_buf = TextBuffer::default();
     let mut output = TextDisplay::default()
-        .with_size(PAGE_W, 250)
-        .with_pos(24, 390)
+        .with_size(PAGE_W, 304)
+        .with_pos(PAD, 388)
         .with_id("log_display");
     output.set_buffer(output_buf);
     let output_buf = output.buffer().unwrap();
@@ -596,13 +641,31 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                     }
                 }
                 output_server_addr.show();
-                but.set_label("Stop");
+                but.set_label("Остановить");
+                if let Some(mut f) = app::widget_from_id::<Frame>("offline_hint") {
+                    f.hide();
+                }
+                if let Some(mut f) = app::widget_from_id::<Frame>("qr_hint") {
+                    f.hide();
+                }
+                if let Some(mut f) = app::widget_from_id::<Frame>("label_addr") {
+                    f.show();
+                }
             } else {
                 proximity.stop();
-                but.set_label("Start");
+                but.set_label("Запустить");
                 output_server_addr.hide();
                 qr_frame.resize_callback(|_, _, _, _, _| {});
                 qr_frame.hide();
+                if let Some(mut f) = app::widget_from_id::<Frame>("offline_hint") {
+                    f.show();
+                }
+                if let Some(mut f) = app::widget_from_id::<Frame>("qr_hint") {
+                    f.show();
+                }
+                if let Some(mut f) = app::widget_from_id::<Frame>("label_addr") {
+                    f.hide();
+                }
                 is_server_running = false;
                 SERVER_LIVE.store(false, Ordering::Relaxed);
                 if let Some(mut pill) = app::widget_from_id::<Frame>("status_pill") {
@@ -729,21 +792,22 @@ fn apply_skin() {
         f.set_color(Color::from(skin.divider));
     }
     if let Some(mut b) = app::widget_from_id::<Button>("btn_toggle") {
-        b.set_frame(FrameType::RoundedBox);
-        b.set_color(accent);
         b.set_label_color(Color::White);
-        b.set_label_size(16);
+        b.set_label_size(15);
         b.set_label_font(Font::HelveticaBold);
-        b.set_down_frame(FrameType::FlatBox);
         b.set_selection_color(accent_pressed);
     }
     if let Some(mut w) = app::widget_from_id::<Output>("output_addr") {
-        w.set_frame(FrameType::FlatBox);
+        w.set_frame(field_frame());
         w.set_color(surface);
         w.set_label_color(dim);
         w.set_text_color(text);
         w.set_text_font(Font::CourierBold);
         w.set_text_size(13);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("server_card") {
+        f.set_frame(card_frame());
+        f.set_color(surface);
     }
     for id in ["input_access", "input_bind"] {
         if let Some(mut w) = app::widget_from_id::<Input>(id) {
@@ -782,21 +846,47 @@ fn apply_skin() {
         }
     }
     if let Some(mut t) = app::widget_from_id::<TextDisplay>("log_display") {
-        t.set_frame(FrameType::FlatBox);
+        t.set_frame(log_frame());
         t.set_color(surface);
         t.set_text_color(log_text);
         t.set_text_font(Font::Courier);
         t.set_text_size(11);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("qr_frame") {
-        f.set_frame(FrameType::FlatBox);
+        f.set_frame(card_frame());
         f.set_color(Color::White);
+    }
+    for id in ["hero_title", "hero_sub", "qr_hint", "offline_hint", "label_addr", "log_caption"] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_frame(FrameType::NoBox);
+        }
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("hero_title") {
+        f.set_label_color(text);
+        f.set_label_font(Font::HelveticaBold);
+        f.set_label_size(22);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("hero_sub") {
+        f.set_label_color(dim);
+        f.set_label_size(12);
+    }
+    for id in ["qr_hint", "offline_hint"] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_label_color(dim);
+            f.set_label_size(12);
+        }
+    }
+    for id in ["label_addr", "log_caption"] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_label_color(dim);
+            f.set_label_font(Font::HelveticaBold);
+            f.set_label_size(10);
+        }
     }
 
     // Decorative captions sit directly on the glow backdrop, so they must not
     // paint their own rectangle; pages hold the backdrop as first child.
     for id in [
-        "home_caption",
         "sec_skin",
         "sec_net",
         "sec_hw",
@@ -814,10 +904,6 @@ fn apply_skin() {
         f.set_label_size(10);
         f.set_label_font(Font::HelveticaBold);
         f.redraw();
-    }
-    if let Some(mut f) = app::widget_from_id::<Frame>("home_caption") {
-        f.set_label_size(16);
-        f.set_label_font(Font::HelveticaBold);
     }
     for id in ["sec_skin", "sec_net", "sec_hw"] {
         if let Some(mut f) = app::widget_from_id::<Frame>(id) {
@@ -902,6 +988,28 @@ fn draw_page_glow(f: &mut Frame) {
     }
     draw::set_draw_color(Color::from(skin.bg_end));
     draw::draw_rectf(x, y + band, w, h - band);
+}
+
+/// Primary action in the server card: a solid accent pill with a hover tint
+/// and a pressed shade; all painting is ours, so the GTK box stays away.
+fn draw_primary_button(b: &mut Button) {
+    let skin = skin();
+    let hovered = app::belowmouse::<Button>()
+        .map(|w| w.as_widget_ptr() == b.as_widget_ptr())
+        .unwrap_or(false);
+    let (x, y, w, h) = (b.x(), b.y(), b.w(), b.h());
+    let base = if b.value() {
+        skin.accent.mix(Rgb24::hex(0x000000), 180)
+    } else if hovered {
+        skin.accent.mix(Rgb24::hex(0xffffff), 90)
+    } else {
+        skin.accent
+    };
+    draw::set_draw_color(Color::from(base));
+    draw::draw_rounded_rectf(x, y, w, h, h / 2);
+    draw::set_font(Font::HelveticaBold, 15);
+    draw::set_draw_color(Color::White);
+    draw::draw_text2(&b.label(), x, y, w, h, Align::Center);
 }
 
 /// Sidebar entry: a pill for the active page plus a small vector icon (house
