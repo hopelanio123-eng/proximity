@@ -5,6 +5,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::AtomicBool;
 
 use fltk::app;
+use fltk::draw;
 use fltk::enums::{Align, Color, Font, FrameType, LabelType};
 use fltk::image::PngImage;
 use fltk::menu::Choice;
@@ -26,9 +27,43 @@ use fltk::{
 #[cfg(not(target_os = "windows"))]
 use pnet_datalink as datalink;
 
-use crate::config::{write_config, Config, ThemeType};
+use crate::config::{write_config, Config};
 use crate::protocol::{CustomInputAreas, Rect};
+use crate::theme::{palette_by_name, Skin, DEFAULT_PALETTE, PALETTES};
 use crate::web::Web2UiMessage::UInputInaccessible;
+
+/// The active palette, kept globally so the custom draw callbacks of the
+/// sidebar, page backdrop and widgets read the same colors at paint time.
+static SKIN: Mutex<Option<Skin>> = Mutex::new(None);
+
+/// Current skin; falls back to the default palette until it is initialized.
+fn skin() -> Skin {
+    let guard = SKIN.lock().unwrap();
+    match guard.as_ref() {
+        Some(s) => s.clone(),
+        None => Skin::from_palette(DEFAULT_PALETTE),
+    }
+}
+
+/// Adopt a palette by name ( Falling back to the default for unknown or
+/// missing names, which also covers configs written by older releases) and
+/// re-skin the whole window.
+fn apply_palette(name: Option<&str>) {
+    let (palette, found) = match name.map(palette_by_name) {
+        Some(Some(p)) => (p, true),
+        Some(None) => (DEFAULT_PALETTE, false),
+        None => (DEFAULT_PALETTE, true),
+    };
+    if let (false, Some(missing)) = (found, name) {
+        warn!("Unknown gui theme '{missing}', falling back to {}", DEFAULT_PALETTE.name);
+    }
+    *SKIN.lock().unwrap() = Some(Skin::from_palette(palette));
+    apply_skin();
+    show_page(*HOME_ACTIVE.lock().unwrap());
+    if let Some(mut w) = app::widget_from_id::<Window>("main_window") {
+        w.redraw();
+    }
+}
 
 pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let width = 200;
@@ -44,7 +79,6 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     const PAGE_W: i32 = CONTENT_W - 48;
 
     let app = App::default().with_scheme(fltk::app::AppScheme::Gtk);
-    config.gui_theme.map(|th| th.apply());
     let mut wind = Window::default()
         .with_size(WIN_W, WIN_H)
         .center_screen()
@@ -92,11 +126,13 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_pos(14, 98)
         .with_label("Главная")
         .with_id("nav_home");
+    nav_home_btn.draw(|b| draw_nav_item(b, true));
     let mut nav_settings_btn = Button::default()
         .with_size(148, 32)
         .with_pos(14, 132)
         .with_label("Настройки")
         .with_id("nav_settings");
+    nav_settings_btn.draw(|b| draw_nav_item(b, false));
 
     let mut status_pill = Frame::default()
         .with_size(148, 30)
@@ -119,6 +155,14 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_pos(NAV_W, 0)
         .with_size(CONTENT_W, WIN_H)
         .with_id("page_home");
+
+    // Ambient glow backdrop, painted by the current palette (first child, so
+    // every other widget sits on top of it).
+    let mut home_glow = Frame::default()
+        .with_size(CONTENT_W, WIN_H)
+        .with_pos(0, 0)
+        .with_id("page_glow_home");
+    home_glow.draw(draw_page_glow);
 
     Frame::default()
         .with_size(PAGE_W, 40)
@@ -162,6 +206,12 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_size(CONTENT_W, WIN_H)
         .with_id("page_settings");
 
+    let mut settings_glow = Frame::default()
+        .with_size(CONTENT_W, WIN_H)
+        .with_pos(0, 0)
+        .with_id("page_glow_settings");
+    settings_glow.draw(draw_page_glow);
+
     Frame::default()
         .with_size(PAGE_W, 16)
         .with_pos(24, 18)
@@ -175,10 +225,20 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_label("Theme")
         .with_id("choice_theme");
 
-    for theme in ThemeType::themes() {
-        choice_theme.add_choice(&theme.name());
+    for palette in PALETTES {
+        choice_theme.add_choice(palette.name);
     }
-    choice_theme.set_value(config.gui_theme.unwrap_or(ThemeType::default()).to_index());
+    let selected = config
+        .gui_theme
+        .as_deref()
+        .and_then(palette_by_name)
+        .unwrap_or(DEFAULT_PALETTE);
+    choice_theme.set_value(
+        PALETTES
+            .iter()
+            .position(|p| p.name == selected.name)
+            .unwrap_or(0) as i32,
+    );
 
     Frame::default()
         .with_size(PAGE_W, 16)
@@ -311,6 +371,10 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     wind.make_resizable(true);
     wind.end();
     wind.show();
+    // First paint with the palette from the config (or the default), then
+    // show the home page.
+    let configured = config.gui_theme.as_deref().and_then(palette_by_name);
+    *SKIN.lock().unwrap() = Some(Skin::from_palette(configured.unwrap_or(DEFAULT_PALETTE)));
     apply_skin();
     show_page(true);
 
@@ -332,14 +396,10 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         let config = config.clone();
         choice_theme.set_callback(move |c| {
             let v = c.value();
-            if v >= 0 {
-                ThemeType::from_index(v).apply();
-                let home = app::widget_from_id::<Group>("page_home")
-                    .map(|g| g.visible())
-                    .unwrap_or(true);
-                apply_skin();
-                show_page(home);
-                config.lock().unwrap().gui_theme = Some(ThemeType::from_index(v));
+            if v >= 0 && (v as usize) < PALETTES.len() {
+                let palette = &PALETTES[v as usize];
+                apply_palette(Some(palette.name));
+                config.lock().unwrap().gui_theme = Some(palette.name.to_string());
                 write_config(&config.lock().unwrap());
             }
         });
@@ -362,7 +422,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                     config.web_port = web_port;
                     config.bind_address = bind_addr;
                     config.auto_start = check_auto_start.is_checked();
-                    config.gui_theme = Some(ThemeType::from_index(choice_theme.value()));
+                    config.gui_theme = PALETTES
+                        .get(choice_theme.value().max(0) as usize)
+                        .map(|p| p.name.to_string());
                     #[cfg(target_os = "linux")]
                     {
                         config.try_vaapi = check_native_hw_accel.is_checked();
@@ -565,63 +627,56 @@ fn show_page(home: bool) {
     style_nav_items();
 }
 
-/// Pill-shaped highlight for the active sidebar entry, flat and dimmed for
-/// the inactive ones.
+/// Redraw the two sidebar entries; their custom draw callbacks pick up the
+/// active page and palette themselves.
 fn style_nav_items() {
-    let home_active = *HOME_ACTIVE.lock().unwrap();
-    let bg = Color::from_rgb(14, 17, 22);
-    let surface = Color::from_rgb(30, 35, 42);
-    let text = Color::from_rgb(232, 236, 241);
-    let dim = Color::from_rgb(139, 150, 165);
-    for (id, active) in [("nav_home", home_active), ("nav_settings", !home_active)] {
+    for id in ["nav_home", "nav_settings"] {
         if let Some(mut b) = app::widget_from_id::<Button>(id) {
-            if active {
-                b.set_frame(FrameType::RoundedBox);
-                b.set_color(surface);
-                b.set_label_color(text);
-                b.set_label_font(Font::HelveticaBold);
-            } else {
-                b.set_frame(FrameType::FlatBox);
-                b.set_color(bg);
-                b.set_label_color(dim);
-                b.set_label_font(Font::Helvetica);
-            }
-            b.set_label_size(13);
             b.redraw();
         }
     }
 }
 
-/// Modern dark "Clean Sheet" skin applied on top of (or instead of) the
-/// classic fltk themes. Every styled widget is looked up by id, so this can
-/// be re-run at any time - in particular right after a theme switch, which
-/// would otherwise repaint everything in the classic grey look.
+/// Modern skin applied on top of every widget, driven by the active palette
+/// (see src/theme.rs). Every styled widget is looked up by id, so this can be
+/// re-run at any time - in particular right after a theme switch, which
+/// would otherwise keep stale colors around.
 fn apply_skin() {
-    let bg = Color::from_rgb(14, 17, 22);
-    let surface = Color::from_rgb(30, 35, 42);
-    let accent = Color::from_rgb(59, 130, 246);
-    let accent_pressed = Color::from_rgb(37, 99, 235);
-    let text = Color::from_rgb(232, 236, 241);
-    let dim = Color::from_rgb(139, 150, 165);
-    let log_text = Color::from_rgb(160, 170, 182);
+    let skin = skin();
+    let bg = Color::from(skin.bg_end);
+    let nav_bg = Color::from(skin.nav_bg);
+    let surface = Color::from(skin.surface);
+    let pill = Color::from(skin.pill);
+    let accent = Color::from(skin.accent);
+    let accent_pressed = Color::from(skin.accent_pressed);
+    let text = Color::from(skin.text);
+    let dim = Color::from(skin.dim);
+    let log_text = Color::from(skin.log_text);
 
+    // Window chrome: the whole window takes the sidebar tone so no classic
+    // grey bleeds through, then the pieces paint their own colors.
+    if let Some(mut w) = app::widget_from_id::<Window>("main_window") {
+        w.set_frame(FrameType::FlatBox);
+        w.set_color(nav_bg);
+    }
+    if let Some(mut g) = app::widget_from_id::<Group>("nav_bar") {
+        g.set_frame(FrameType::FlatBox);
+        g.set_color(nav_bg);
+    }
     for id in ["head_title", "head_sub", "label_hw"] {
         if let Some(mut f) = app::widget_from_id::<Frame>(id) {
-            f.set_frame(FrameType::FlatBox);
-            f.set_color(bg);
+            f.set_frame(FrameType::NoBox);
+            f.set_label_color(text);
         }
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("head_title") {
-        f.set_label_color(text);
         f.set_label_font(Font::HelveticaBold);
         f.set_label_size(22);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("head_sub") {
-        f.set_label_color(dim);
         f.set_label_size(12);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("label_hw") {
-        f.set_label_color(text);
         f.set_label_size(13);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("brand_mark") {
@@ -633,50 +688,32 @@ fn apply_skin() {
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("status_pill") {
         f.set_frame(FrameType::RoundedBox);
-        f.set_color(surface);
+        f.set_color(pill);
         f.set_label_size(12);
         f.set_label_font(Font::HelveticaBold);
+        f.set_label_color(dim);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("head_divider") {
         f.set_frame(FrameType::FlatBox);
-        f.set_color(Color::from_rgb(42, 49, 58));
+        f.set_color(Color::from(skin.divider));
     }
-    if let Some(mut f) = app::widget_from_id::<Frame>("nav_caption") {
-        f.set_frame(FrameType::FlatBox);
-        f.set_color(bg);
-        f.set_label_color(dim);
-        f.set_label_size(11);
-        f.set_label_font(Font::HelveticaBold);
+    if let Some(mut b) = app::widget_from_id::<Button>("btn_toggle") {
+        b.set_frame(FrameType::RoundedBox);
+        b.set_color(accent);
+        b.set_label_color(Color::White);
+        b.set_label_size(16);
+        b.set_label_font(Font::HelveticaBold);
+        b.set_down_frame(FrameType::FlatBox);
+        b.set_selection_color(accent_pressed);
     }
-    if let Some(mut f) = app::widget_from_id::<Frame>("home_caption") {
-        f.set_frame(FrameType::FlatBox);
-        f.set_color(bg);
-        f.set_label_color(text);
-        f.set_label_size(16);
-        f.set_label_font(Font::HelveticaBold);
+    if let Some(mut w) = app::widget_from_id::<Output>("output_addr") {
+        w.set_frame(FrameType::FlatBox);
+        w.set_color(surface);
+        w.set_label_color(dim);
+        w.set_text_color(text);
+        w.set_text_font(Font::CourierBold);
+        w.set_text_size(13);
     }
-    if let Some(mut f) = app::widget_from_id::<Frame>("sec_skin") {
-        f.set_frame(FrameType::FlatBox);
-        f.set_color(bg);
-        f.set_label_color(dim);
-        f.set_label_size(11);
-        f.set_label_font(Font::HelveticaBold);
-    }
-    if let Some(mut f) = app::widget_from_id::<Frame>("sec_net") {
-        f.set_frame(FrameType::FlatBox);
-        f.set_color(bg);
-        f.set_label_color(dim);
-        f.set_label_size(11);
-        f.set_label_font(Font::HelveticaBold);
-    }
-    if let Some(mut f) = app::widget_from_id::<Frame>("sec_hw") {
-        f.set_frame(FrameType::FlatBox);
-        f.set_color(bg);
-        f.set_label_color(dim);
-        f.set_label_size(11);
-        f.set_label_font(Font::HelveticaBold);
-    }
-
     for id in ["input_access", "input_bind"] {
         if let Some(mut w) = app::widget_from_id::<Input>(id) {
             w.set_frame(FrameType::FlatBox);
@@ -703,14 +740,7 @@ fn apply_skin() {
         c.set_label_color(dim);
         c.set_text_color(text);
         c.set_text_size(13);
-    }
-    if let Some(mut o) = app::widget_from_id::<Output>("output_addr") {
-        o.set_frame(FrameType::FlatBox);
-        o.set_color(surface);
-        o.set_label_color(dim);
-        o.set_text_color(accent);
-        o.set_text_font(Font::HelveticaBold);
-        o.set_text_size(13);
+        c.redraw();
     }
     for id in ["check_auto", "check_native", "check_nvenc", "check_wayland"] {
         if let Some(mut c) = app::widget_from_id::<CheckButton>(id) {
@@ -719,15 +749,6 @@ fn apply_skin() {
             c.set_color(surface);
             c.set_selection_color(accent);
         }
-    }
-    if let Some(mut b) = app::widget_from_id::<Button>("btn_toggle") {
-        b.set_frame(FrameType::RoundedBox);
-        b.set_color(accent);
-        b.set_label_color(Color::White);
-        b.set_label_size(16);
-        b.set_label_font(Font::HelveticaBold);
-        b.set_down_frame(FrameType::FlatBox);
-        b.set_selection_color(accent_pressed);
     }
     if let Some(mut t) = app::widget_from_id::<TextDisplay>("log_display") {
         t.set_frame(FrameType::FlatBox);
@@ -740,6 +761,116 @@ fn apply_skin() {
         f.set_frame(FrameType::FlatBox);
         f.set_color(Color::White);
     }
+
+    // Decorative captions sit directly on the glow backdrop, so they must not
+    // paint their own rectangle; pages hold the backdrop as first child.
+    for id in [
+        "home_caption",
+        "sec_skin",
+        "sec_net",
+        "sec_hw",
+        "head_title",
+        "head_sub",
+        "nav_caption",
+    ] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_frame(FrameType::NoBox);
+            f.set_color(bg);
+        }
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("nav_caption") {
+        f.set_label_color(dim);
+        f.set_label_size(11);
+        f.set_label_font(Font::HelveticaBold);
+        f.redraw();
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("home_caption") {
+        f.set_label_size(16);
+        f.set_label_font(Font::HelveticaBold);
+    }
+    for id in ["sec_skin", "sec_net", "sec_hw"] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_label_color(dim);
+            f.set_label_size(11);
+            f.set_label_font(Font::HelveticaBold);
+        }
+    }
+    // The page groups must not paint their own box over the glow backdrop,
+    // and the backdrop frames themselves must stay transparent.
+    for id in ["page_home", "page_settings"] {
+        if let Some(mut g) = app::widget_from_id::<Group>(id) {
+            g.set_frame(FrameType::NoBox);
+        }
+    }
+    for id in ["page_glow_home", "page_glow_settings"] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_frame(FrameType::NoBox);
+        }
+    }
+}
+
+/// Ambient glow backdrop for a page: the palette's tinted top fades into the
+/// flat background, echoing the radial "glow from the top" gradients of the
+/// original anime presets.
+fn draw_page_glow(f: &mut Frame) {
+    let skin = skin();
+    let (x, y) = (f.x(), f.y());
+    let (w, h) = (f.w(), f.h());
+    // The haze covers the upper third; below it stays the base color.
+    let band = (h / 3).max(1);
+    for row in 0..band {
+        let t = ((row * 1000) / band) as u32;
+        draw::set_draw_color(Color::from(skin.bg_end.mix(skin.bg_start, 1000 - t)));
+        draw::draw_rectf(x, y + row, w, 1);
+    }
+    draw::set_draw_color(Color::from(skin.bg_end));
+    draw::draw_rectf(x, y + band, w, h - band);
+}
+
+/// Sidebar entry: a pill for the active page plus a small vector icon (house
+/// for home, sliders for settings) matching the launcher screenshot.
+fn draw_nav_item(b: &mut Button, home: bool) {
+    let skin = skin();
+    let active = *HOME_ACTIVE.lock().unwrap() == home;
+    let (x, y) = (b.x(), b.y());
+    let (w, h) = (b.w(), b.h());
+    if active {
+        draw::set_draw_color(Color::from(skin.pill));
+        draw::draw_rounded_rectf(x, y, w, h, 10);
+        draw::set_draw_color(Color::from(skin.text));
+    } else {
+        draw::set_draw_color(Color::from(skin.dim));
+    }
+    let icon_color = draw::get_color();
+    draw::set_font(Font::HelveticaBold, 13);
+    let icon_x = x + 24;
+    if home {
+        // House: roof triangle, body square and a door notch in the bg color.
+        let cy = y + h / 2;
+        draw::draw_polygon(icon_x, cy - 8, icon_x - 8, cy - 1, icon_x + 8, cy - 1);
+        draw::draw_rectf(icon_x - 6, cy - 1, 12, 9);
+        draw::set_draw_color(if active {
+            Color::from(skin.pill)
+        } else {
+            Color::from(skin.nav_bg)
+        });
+        draw::draw_rectf(icon_x - 2, cy + 3, 4, 5);
+    } else {
+        // Sliders: three lines with moved knobs.
+        let cy = y + h / 2;
+        for (offset, knob) in [(-6, icon_x + 2), (0, icon_x - 3), (6, icon_x + 4)] {
+            let line_y = cy + offset;
+            draw::draw_line(icon_x - 8, line_y, icon_x + 8, line_y);
+            draw::draw_circle_fill(knob, line_y, 6, icon_color);
+        }
+    }
+    draw::set_draw_color(if active {
+        Color::from(skin.text)
+    } else {
+        Color::from(skin.dim)
+    });
+    draw::set_font(Font::HelveticaBold, 13);
+    draw::draw_text(&b.label(), x + 44, y + 9);
 }
 static WINCTX: Mutex<Option<InputAreaWindowContext>> = Mutex::new(None);
 

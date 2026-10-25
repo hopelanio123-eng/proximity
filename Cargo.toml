@@ -15,7 +15,6 @@ clap_complete = "4.5.29"
 dirs = "^5.0"
 fastwebsockets = { version = "0.8.0", features = ["upgrade", "unstable-split"] }
 fltk = { version = "^1.5", features = ["use-wayland"] }
-fltk-theme = "^0.7.9"
 handlebars = "^6.1"
 http-body-util = "0.1.2"
 hyper = { version = "^1.4", features = ["server", "http1", "http2"] }

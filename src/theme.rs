@@ -66,6 +66,7 @@ impl From<Rgb24> for Color {
 }
 
 /// Everything the skin needs, derived from a palette plus base shades.
+#[derive(Clone)]
 pub struct Skin {
     pub bg_start: Rgb24, // page background, ambient glow tinted top
     pub bg_end: Rgb24,   // page background bottom

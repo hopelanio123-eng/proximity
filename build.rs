@@ -1,5 +1,5 @@
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn build_ffmpeg(dist_dir: &Path, enable_libnpp: bool) {
@@ -26,7 +26,6 @@ fn build_ffmpeg(dist_dir: &Path, enable_libnpp: bool) {
         std::process::exit(1);
     }
 }
-
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
@@ -36,10 +35,11 @@ fn main() {
     let skip_ffmpeg_cc =
         env::var("PROXIMITY_SKIP_FFMPEG_CC").map_or(false, |v| ["y", "yes", "true", "1"].contains(&v.to_lowercase().as_str()));
 
-    let dist_dir = Path::new("deps")
-        .canonicalize()
-        .unwrap()
-        .join(format!("dist_{}", target_os));
+    // Note: no canonicalize() here. On Windows it produces a `\\?\`-prefixed
+    // path, which cl.exe rejects in its -I flag (and which additionally
+    // breaks with non-ASCII project paths); a plain relative path keeps the
+    // C helpers building on any host layout.
+    let dist_dir = PathBuf::from("deps").join(format!("dist_{}", target_os));
 
     let enable_libnpp = env::var("I_AM_BUILDING_THIS_AT_HOME_AND_WANT_LIBNPP").map_or(false, |v| {
         ["y", "yes", "true", "1"].contains(&v.to_lowercase().as_str())
@@ -94,6 +94,9 @@ fn main() {
     let mut cc_video = cc::Build::new();
     cc_video.file("lib/encode_video.c");
     cc_video.include(dist_dir.join("include"));
+    // The C helpers use C99/C11 constructs (compound literals and friends)
+    // which MSVC only accepts with /std:c11; gcc and clang ignore it.
+    cc_video.std("c11");
     if ["linux", "windows"].contains(&target_os.as_str()) {
         cc_video.define("HAS_NVENC", None);
     }
@@ -115,12 +118,13 @@ fn main() {
     println!("cargo:rerun-if-changed=lib/error.c");
     println!("cargo:rerun-if-changed=lib/log.h");
     println!("cargo:rerun-if-changed=lib/log.c");
-    cc::Build::new().file("lib/error.c").compile("error");
-    cc::Build::new().file("lib/log.c").compile("log");
+    cc::Build::new().file("lib/error.c").std("c11").compile("error");
+    cc::Build::new().file("lib/log.c").std("c11").compile("log");
 
     println!("cargo:rerun-if-changed=lib/encode_audio.c");
     cc::Build::new()
         .file("lib/encode_audio.c")
+        .std("c11")
         .include(dist_dir.join("include"))
         .compile("audio");
 
