@@ -5,7 +5,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::AtomicBool;
 
 use fltk::app;
-use fltk::enums::{FrameType, LabelType};
+use fltk::enums::{Align, Color, Font, FrameType, LabelType};
 use fltk::image::PngImage;
 use fltk::menu::Choice;
 use std::sync::{mpsc, Arc, Mutex};
@@ -37,16 +37,36 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let app = App::default().with_scheme(fltk::app::AppScheme::Gtk);
     config.gui_theme.map(|th| th.apply());
     let mut wind = Window::default()
-        .with_size(660, 600)
+        .with_size(660, 660)
         .center_screen()
         .with_label(&format!("Proximity - {}", env!("CARGO_PKG_VERSION")));
     wind.set_xclass("proximity");
     wind.set_callback(move |_win| app.quit());
+    wind.set_frame(FrameType::FlatBox);
+    wind.set_color(Color::from_rgb(14, 17, 22));
+    wind.set_id("main_window");
+
+    Frame::default()
+        .with_size(620, 30)
+        .with_pos(20, 18)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("Proximity")
+        .with_id("head_title");
+    Frame::default()
+        .with_size(620, 16)
+        .with_pos(22, 50)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label(&format!(
+            "v{} - control your PC from any device with a browser",
+            env!("CARGO_PKG_VERSION")
+        ))
+        .with_id("head_sub");
 
     let mut input_access_code = Input::default()
-        .with_pos(130, 30)
+        .with_pos(130, 100)
         .with_size(width, height)
-        .with_label("Access code");
+        .with_label("Access code")
+        .with_id("input_access");
     input_access_code.set_tooltip(
         "Restrict who can control your computer with an access code. Note that this does NOT do \
         any kind of encryption and it is advised to only run Proximity inside trusted networks! Do \
@@ -60,19 +80,22 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let mut input_bind_addr = Input::default()
         .with_size(width, height)
         .below_of(&input_access_code, padding)
-        .with_label("Bind Address");
+        .with_label("Bind Address")
+        .with_id("input_bind");
     input_bind_addr.set_value(&config.bind_address.to_string());
 
     let mut input_port = IntInput::default()
         .with_size(width, height)
         .below_of(&input_bind_addr, padding)
-        .with_label("Port");
+        .with_label("Port")
+        .with_id("input_port");
     input_port.set_value(&config.web_port.to_string());
 
     let mut check_auto_start = CheckButton::default()
         .with_size(70, height)
         .below_of(&input_port, padding + 5)
-        .with_label("Auto Start");
+        .with_label("Auto Start")
+        .with_id("check_auto");
     check_auto_start.set_tooltip("Start Proximity server immediately on program start.");
     check_auto_start.set_checked(config.auto_start);
 
@@ -80,7 +103,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let mut check_wayland = CheckButton::default()
         .with_size(70, height)
         .right_of(&check_auto_start, 3 * padding)
-        .with_label("Wayland/\nPipeWire\nSupport");
+        .with_label("Wayland/\nPipeWire\nSupport")
+        .with_id("check_wayland");
     #[cfg(target_os = "linux")]
     {
         check_wayland.set_tooltip(
@@ -93,7 +117,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let mut label_hw_accel = Frame::default()
         .with_size(width, height)
         .below_of(&check_auto_start, padding)
-        .with_label("Try Hardware acceleration");
+        .with_label("Try Hardware acceleration")
+        .with_id("label_hw");
     label_hw_accel.set_tooltip(
         "On many systems video encoding can be done with hardware \
         acceleration. By default this is disabled as the quality and stability of video encoding \
@@ -102,7 +127,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     let mut check_native_hw_accel = CheckButton::default()
         .with_size(70, height)
-        .below_of(&label_hw_accel, 0);
+        .below_of(&label_hw_accel, 0)
+        .with_id("check_native");
 
     #[cfg(target_os = "linux")]
     {
@@ -131,7 +157,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let mut check_nvenc = CheckButton::default()
         .with_size(70, height)
         .right_of(&check_native_hw_accel, 2 * padding)
-        .with_label("NVENC");
+        .with_label("NVENC")
+        .with_id("check_nvenc");
     check_nvenc.set_tooltip("Try to use Nvidia's NVENC to encode the video via GPU.");
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -146,25 +173,29 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let mut but_toggle = Button::default()
         .with_size(width, height)
         .below_of(&check_native_hw_accel, 2 * padding)
-        .with_label("Start");
+        .with_label("Start")
+        .with_id("btn_toggle");
 
     let mut output_server_addr = Output::default()
         .with_size(500, height)
         .below_of(&but_toggle, 3 * padding)
-        .with_label("Connect your\ntablet to:");
+        .with_label("Connect your\ntablet to:")
+        .with_id("output_addr");
     output_server_addr.hide();
 
     let output_buf = TextBuffer::default();
     let mut output = TextDisplay::default().with_size(600, 6 * height).with_pos(
         30,
         output_server_addr.y() + output_server_addr.height() + padding,
-    );
+    )
+    .with_id("log_display");
     output.set_buffer(output_buf);
     let output_buf = output.buffer().unwrap();
 
     let mut choice_theme = Choice::default()
         .with_size(width, height)
-        .right_of(&input_access_code, padding);
+        .right_of(&input_access_code, padding)
+        .with_id("choice_theme");
 
     for theme in ThemeType::themes() {
         choice_theme.add_choice(&theme.name());
@@ -173,13 +204,15 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     let mut qr_frame = Frame::default()
         .with_size(235, 235)
-        .right_of(&input_bind_addr, padding);
+        .right_of(&input_bind_addr, padding)
+        .with_id("qr_frame");
 
     qr_frame.hide();
 
     wind.make_resizable(true);
     wind.end();
     wind.show();
+    apply_skin();
 
     let output_buf = Arc::new(Mutex::new(output_buf));
 
@@ -201,6 +234,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
             let v = c.value();
             if v >= 0 {
                 ThemeType::from_index(v).apply();
+                apply_skin();
                 config.lock().unwrap().gui_theme = Some(ThemeType::from_index(v));
                 write_config(&config.lock().unwrap());
             }
@@ -252,11 +286,17 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                             .center_screen()
                             .with_label("Proximity - UInput inaccessible!");
                         pop_up.set_xclass("proximity");
+                        pop_up.set_frame(FrameType::FlatBox);
+                        pop_up.set_color(Color::from_rgb(14, 17, 22));
 
                         let buf = TextBuffer::default();
                         let mut pop_up_text = TextDisplay::default().with_size(w, h);
                         pop_up_text.set_buffer(buf);
                         pop_up_text.wrap_mode(fltk::text::WrapMode::AtBounds, 5);
+                        pop_up_text.set_frame(FrameType::FlatBox);
+                        pop_up_text.set_color(Color::from_rgb(14, 17, 22));
+                        pop_up_text.set_text_color(Color::from_rgb(232, 236, 241));
+                        pop_up_text.set_text_size(13);
                         let mut buf = pop_up_text.buffer().unwrap();
                         buf.set_text(std::include_str!("strings/uinput_error.txt"));
 
@@ -385,6 +425,104 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 }
 
 const BORDER: i32 = 30;
+
+/// Modern dark "Clean Sheet" skin applied on top of (or instead of) the
+/// classic fltk themes. Every styled widget is looked up by id, so this can
+/// be re-run at any time - in particular right after a theme switch, which
+/// would otherwise repaint everything in the classic grey look.
+fn apply_skin() {
+    let bg = Color::from_rgb(14, 17, 22);
+    let surface = Color::from_rgb(30, 35, 42);
+    let accent = Color::from_rgb(59, 130, 246);
+    let accent_pressed = Color::from_rgb(37, 99, 235);
+    let text = Color::from_rgb(232, 236, 241);
+    let dim = Color::from_rgb(139, 150, 165);
+    let log_text = Color::from_rgb(160, 170, 182);
+
+    for id in ["head_title", "head_sub", "label_hw"] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_frame(FrameType::FlatBox);
+            f.set_color(bg);
+        }
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("head_title") {
+        f.set_label_color(text);
+        f.set_label_font(Font::HelveticaBold);
+        f.set_label_size(22);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("head_sub") {
+        f.set_label_color(dim);
+        f.set_label_size(12);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("label_hw") {
+        f.set_label_color(text);
+        f.set_label_size(13);
+    }
+
+    for id in ["input_access", "input_bind"] {
+        if let Some(mut w) = app::widget_from_id::<Input>(id) {
+            w.set_frame(FrameType::FlatBox);
+            w.set_color(surface);
+            w.set_label_color(dim);
+            w.set_text_color(text);
+            w.set_text_font(Font::Helvetica);
+            w.set_text_size(13);
+            w.set_cursor_color(accent);
+        }
+    }
+    if let Some(mut w) = app::widget_from_id::<IntInput>("input_port") {
+        w.set_frame(FrameType::FlatBox);
+        w.set_color(surface);
+        w.set_label_color(dim);
+        w.set_text_color(text);
+        w.set_text_font(Font::Helvetica);
+        w.set_text_size(13);
+        w.set_cursor_color(accent);
+    }
+    if let Some(mut c) = app::widget_from_id::<Choice>("choice_theme") {
+        c.set_frame(FrameType::FlatBox);
+        c.set_color(surface);
+        c.set_label_color(dim);
+        c.set_text_color(text);
+        c.set_text_size(13);
+    }
+    if let Some(mut o) = app::widget_from_id::<Output>("output_addr") {
+        o.set_frame(FrameType::FlatBox);
+        o.set_color(surface);
+        o.set_label_color(dim);
+        o.set_text_color(accent);
+        o.set_text_font(Font::HelveticaBold);
+        o.set_text_size(13);
+    }
+    for id in ["check_auto", "check_native", "check_nvenc", "check_wayland"] {
+        if let Some(mut c) = app::widget_from_id::<CheckButton>(id) {
+            c.set_label_color(text);
+            c.set_label_size(13);
+            c.set_color(surface);
+            c.set_selection_color(accent);
+        }
+    }
+    if let Some(mut b) = app::widget_from_id::<Button>("btn_toggle") {
+        b.set_frame(FrameType::RoundedBox);
+        b.set_color(accent);
+        b.set_label_color(Color::White);
+        b.set_label_size(16);
+        b.set_label_font(Font::HelveticaBold);
+        b.set_down_frame(FrameType::FlatBox);
+        b.set_selection_color(accent_pressed);
+    }
+    if let Some(mut t) = app::widget_from_id::<TextDisplay>("log_display") {
+        t.set_frame(FrameType::FlatBox);
+        t.set_color(surface);
+        t.set_text_color(log_text);
+        t.set_text_font(Font::Courier);
+        t.set_text_size(11);
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("qr_frame") {
+        f.set_frame(FrameType::FlatBox);
+        f.set_color(Color::White);
+    }
+}
 static WINCTX: Mutex<Option<InputAreaWindowContext>> = Mutex::new(None);
 
 struct InputAreaWindowContext {
