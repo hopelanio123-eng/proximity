@@ -401,6 +401,7 @@ class Settings {
 
 let settings: Settings;
 let debug_overlay: HTMLElement;
+let stage_overlay: StageOverlay;
 let last_pointer_data: Object;
 
 class PEvent {
@@ -916,6 +917,7 @@ class SoftKeyboard {
         this.enabled = false;
         this.deactivated_at = 0;
         this.committed = "";
+        this.toggleButton.setAttribute("aria-pressed", "false");
 
         this.toggleButton.onclick = (e) => {
             e.stopPropagation();
@@ -1067,6 +1069,7 @@ class SoftKeyboard {
         this.enabled = true;
         this.bar.classList.remove("hide");
         this.toggleButton.classList.add("active");
+        this.toggleButton.setAttribute("aria-pressed", "true");
         // The funnel deliberately keeps its content across sessions: never
         // reset the value here. On a live field that desynchronizes mobile
         // keyboards - after reopening, the IME replays everything it still
@@ -1084,6 +1087,7 @@ class SoftKeyboard {
         this.deactivated_at = Date.now();
         this.bar.classList.add("hide");
         this.toggleButton.classList.remove("active");
+        this.toggleButton.setAttribute("aria-pressed", "false");
         // Deliberately NOT resetting the field: value and committed stay in
         // sync so the next session continues exactly where the user left
         // instead of replaying stale text into the host.
@@ -1145,7 +1149,9 @@ class QuickBar {
             }
         };
         document.addEventListener("fullscreenchange", () => {
-            btn.classList.toggle("active", document.fullscreenElement !== null);
+            const active = document.fullscreenElement !== null;
+            btn.classList.toggle("active", active);
+            btn.setAttribute("aria-pressed", active ? "true" : "false");
         });
 
         // The audio button streams the PC's sound to this device over a
@@ -1165,6 +1171,7 @@ class QuickBar {
                 audioElement = null;
             }
             audioBtn.classList.remove("active");
+            audioBtn.setAttribute("aria-pressed", "false");
         };
         audioBtn.oncontextmenu = (e) => { e.preventDefault(); return false; };
         audioBtn.onclick = (e) => {
@@ -1179,11 +1186,127 @@ class QuickBar {
             audioElement.style.display = "none";
             document.body.appendChild(audioElement);
             audioBtn.classList.add("active");
+            audioBtn.setAttribute("aria-pressed", "true");
             audioElement.play().catch((err) => {
                 log(LogLevel.WARN, "Audio streaming failed to start: " + err);
                 stop_audio();
             });
         };
+    }
+}
+
+// The stage overlay replaces the plain black screen before the first video
+// frame arrives and turns into a readable error card if the websocket dies.
+// Kept outside the connection machinery so it can be used during init(),
+// before the settings object and the keyboard handlers exist.
+class StageOverlay {
+    root: HTMLElement;
+    title: HTMLElement;
+    sub: HTMLElement;
+    hint: HTMLElement;
+    retry: HTMLButtonElement;
+    conn: HTMLOutputElement;
+    socketReady: boolean;
+    videoEnabled: boolean;
+    videoPlaying: boolean;
+    failed: boolean;
+    failure: string;
+
+    constructor() {
+        this.root = document.getElementById("stage_overlay");
+        this.title = document.getElementById("stage_title");
+        this.sub = document.getElementById("stage_sub");
+        this.hint = document.getElementById("stage_hint");
+        this.retry = document.getElementById("stage_retry") as HTMLButtonElement;
+        this.conn = document.getElementById("conn_state") as HTMLOutputElement;
+        this.socketReady = false;
+        this.videoEnabled = true;
+        this.videoPlaying = false;
+        this.failed = false;
+        this.failure = "";
+        this.retry.onclick = (e) => {
+            e.stopPropagation();
+            location.reload();
+        };
+        this.update();
+    }
+
+    set_video_enabled(enabled: boolean) {
+        if (enabled && !this.videoEnabled) {
+            // Wait for a fresh "playing" event after resuming the stream.
+            this.videoPlaying = false;
+        }
+        this.videoEnabled = enabled;
+        this.update();
+    }
+
+    on_socket_open() {
+        this.socketReady = true;
+        this.failed = false;
+        this.failure = "";
+        this.update();
+    }
+
+    on_socket_error(msg: string) {
+        this.socketReady = false;
+        this.failed = true;
+        this.failure = msg;
+        this.update();
+    }
+
+    on_playing() {
+        this.videoPlaying = true;
+        this.update();
+    }
+
+    private set_conn(label: string, state: string) {
+        if (!this.conn)
+            return;
+        this.conn.textContent = label;
+        this.conn.dataset.state = state;
+    }
+
+    private update() {
+        // Page-level flag so CSS can trim/mute chrome while the stage card is
+        // up (before the stream is live or while it is dead).
+        let overlayHidden = false;
+
+        if (this.failed) {
+            this.root.dataset.state = "error";
+            this.title.textContent = "Connection lost";
+            this.sub.textContent = "The link to your PC closed.";
+            this.hint.textContent = "Check that Proximity is still running on your computer, then reload this page.";
+            this.retry.classList.remove("hide");
+            this.set_conn("Offline", "error");
+            this.root.classList.remove("hide");
+            overlayHidden = false;
+        }
+        else if (!this.videoEnabled) {
+            this.root.classList.add("hide");
+            this.set_conn("Idle", "idle");
+            overlayHidden = true;
+        }
+        else if (this.videoPlaying) {
+            this.root.classList.add("hide");
+            this.set_conn("Live", "live");
+            overlayHidden = true;
+        }
+        else {
+            this.retry.classList.add("hide");
+            this.root.classList.remove("hide");
+            this.root.dataset.state = this.socketReady ? "waiting" : "connecting";
+            this.title.textContent = this.socketReady ? "Connected to your PC" : "Connecting to your PC";
+            this.sub.textContent = this.socketReady ? "Waiting for the screen stream\u2026" : "Looking for the Proximity server\u2026";
+            this.hint.textContent = this.socketReady
+                ? "The screen will appear here in a moment."
+                : "Keep Proximity running on your computer and both devices on the same network.";
+            this.set_conn(this.socketReady ? "Connected" : "Connecting", this.socketReady ? "waiting" : "connecting");
+            overlayHidden = false;
+        }
+
+        if (document.body) {
+            document.body.classList.toggle("stage_live", overlayHidden);
+        }
     }
 }
 
@@ -1327,9 +1450,18 @@ function init() {
 
     debug_overlay = document.getElementById("debug_overlay");
     settings = new Settings(webSocket);
+    stage_overlay = new StageOverlay();
+    stage_overlay.set_video_enabled(settings.video_enabled());
+
+    for (const id of ["enable_video", "energysaving"]) {
+        document.getElementById(id).addEventListener("change", () => {
+            stage_overlay.set_video_enabled(settings.video_enabled());
+        });
+    }
 
     let video = document.getElementById("video") as HTMLVideoElement;
     let canvas = document.getElementById("canvas") as HTMLCanvasElement;
+    video.addEventListener("playing", () => stage_overlay.on_playing());
 
     video.oncontextmenu = function(event) {
         event.preventDefault();
@@ -1359,11 +1491,7 @@ function init() {
     }
 
     let handle_disconnect = (msg: string) => {
-        document.body.onclick = video.onclick = (e) => {
-            e.stopPropagation();
-            if (window.confirm(msg + " Reload page?"))
-                location.reload();
-        }
+        stage_overlay.on_socket_error(msg);
     }
     webSocket.onerror = () => handle_disconnect("Lost connection.");
     webSocket.onclose = () => handle_disconnect("Connection closed.");
@@ -1393,6 +1521,7 @@ function init() {
     );
     window.onunload = () => { webSocket.close(); }
     webSocket.onopen = function(event) {
+        stage_overlay.on_socket_open();
         webSocket.send('"GetCapturableList"');
         if (!settings.video_enabled())
             webSocket.send('"PauseVideo"');

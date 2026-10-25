@@ -1,13 +1,18 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=overlays-content" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#0b0d10">
+    <meta name="apple-mobile-web-app-title" content="Proximity">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#090b10">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#eef1f7">
     <meta name="color-scheme" content="dark light">
+    <meta name="description" content="Control your PC from any device with a browser.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%237c8cff'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Ccircle cx='16' cy='16' r='7.2' fill='none' stroke='white' stroke-width='1.8'/%3E%3Ccircle cx='16' cy='16' r='2.3' fill='white'/%3E%3C/svg%3E">
     <title>Proximity</title>
     <link rel="stylesheet" href="style.css">
     <script src="lib.js"></script>
@@ -21,43 +26,111 @@
         <video id="video" autoplay muted defaultMuted playsinline disablePictureInPicture></video>
         <canvas id="canvas" class="vanish"></canvas>
         <div id="debug_overlay" class="hide"></div>
+
+        <!-- Shown until the screen stream starts; turns into an error card if
+             the websocket dies. Controlled by lib.js (StageOverlay). -->
+        <div id="stage_overlay" data-state="connecting" aria-live="polite">
+            <div class="stage_card">
+                <span class="brand_mark brand_mark_lg" aria-hidden="true">
+                    <svg viewBox="0 0 32 32" fill="none">
+                        <circle cx="16" cy="16" r="8" stroke="currentColor" stroke-width="1.8" opacity=".92" />
+                        <circle cx="16" cy="16" r="2.6" fill="currentColor" />
+                        <circle cx="25.5" cy="6.5" r="2" fill="currentColor" opacity=".7" />
+                    </svg>
+                </span>
+                <span class="eyebrow">Proximity</span>
+                <h1 class="stage_title" id="stage_title">Connecting to your PC</h1>
+                <p class="stage_sub" id="stage_sub">Waiting for the screen stream&hellip;</p>
+                <div class="stage_loader" aria-hidden="true"></div>
+                <p class="stage_hint" id="stage_hint">Keep Proximity running on your computer and both devices on the same network.</p>
+                <button id="stage_retry" type="button" class="btn stage_retry hide">Reload page</button>
+                <div class="stage_meta" aria-hidden="true">
+                    <span class="stage_chip"><i class="pulse_dot"></i>Local network</span>
+                    <span class="stage_chip">Touch &amp; stylus ready</span>
+                </div>
+            </div>
+        </div>
     </main>
 
-    <!-- Opens the settings panel; the panel itself lives off-screen when hidden. -->
-    <button id="settings_fab" type="button" title="Settings" aria-label="Open settings">
-        <svg viewBox="0 0 24 24" width="1.5em" height="1.5em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
-            <circle cx="15" cy="7" r="2" />
-            <circle cx="9" cy="17" r="2" />
-        </svg>
-    </button>
-
     <div id="settings">
-        <div id="handle" aria-hidden="true">‹</div>
+        <div id="handle" aria-hidden="true">&lsaquo;</div>
 
         <header id="settings_header">
+            <span class="brand_mark brand_mark_sm" aria-hidden="true">
+                <svg viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="8" stroke="currentColor" stroke-width="2" opacity=".92" />
+                    <circle cx="16" cy="16" r="2.6" fill="currentColor" />
+                </svg>
+            </span>
             <div class="head_text">
                 <span class="head_title">Proximity</span>
-                <span class="head_sub">Device settings</span>
+                <span class="head_sub">Device &amp; stream settings</span>
             </div>
-            <button id="settings_close" type="button" aria-label="Close settings">✕</button>
+            <button id="settings_close" type="button" aria-label="Close settings">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+                    <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+            </button>
         </header>
 
         <nav class="tabs" role="tablist" aria-label="Settings sections">
-            <button class="tab_btn active" type="button" role="tab" aria-selected="true" data-tab="screen">Screen</button>
-            <button class="tab_btn" type="button" role="tab" aria-selected="false" data-tab="input">Input</button>
-            <button class="tab_btn" type="button" role="tab" aria-selected="false" data-tab="more">More</button>
+            <button class="tab_btn active" type="button" role="tab" id="tab_screen" aria-selected="true" aria-controls="panel_screen" data-tab="screen">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="3" y="4.5" width="18" height="12" rx="2" />
+                    <path d="M9 20h6M12 16.5V20" />
+                </svg>
+                <span>Screen</span>
+            </button>
+            <button class="tab_btn" type="button" role="tab" id="tab_input" aria-selected="false" aria-controls="panel_input" data-tab="input">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M6.5 3.5l9.6 9.6-4.2.8 2.4 4.1-2 1.2-2.4-4.1-3.4 3z" />
+                </svg>
+                <span>Input</span>
+            </button>
+            <button class="tab_btn" type="button" role="tab" id="tab_more" aria-selected="false" aria-controls="panel_more" data-tab="more">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                    <circle cx="5.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+                    <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+                    <circle cx="18.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+                </svg>
+                <span>More</span>
+            </button>
         </nav>
 
         <div id="settings_scroll">
-            <div class="tab_panel active" data-tab-panel="screen" role="tabpanel">
-                <h3>Source</h3>
+            <div class="tab_panel active" id="panel_screen" data-tab-panel="screen" role="tabpanel" aria-labelledby="tab_screen">
+                <h3>
+                    <span class="sec_icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4.5" width="18" height="12" rx="2" />
+                            <path d="M9 20h6M12 16.5V20" />
+                        </svg>
+                    </span>
+                    Source
+                </h3>
                 <section>
                     <label class="field_label" for="window">Capture</label>
-                    <select id="window"></select>
-                    <button id="refresh" type="button" class="btn btn_ghost">Refresh list</button>
+                    <div class="select_wrap">
+                        <select id="window"></select>
+                    </div>
+                    <button id="refresh" type="button" class="btn btn_ghost">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M20 11a8 8 0 1 0-2.3 6.3" />
+                            <path d="M20 5v6h-6" />
+                        </svg>
+                        Refresh list
+                    </button>
                 </section>
-                <h3>Video</h3>
+
+                <h3>
+                    <span class="sec_icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="5" width="18" height="14" rx="2.5" />
+                            <path d="M10 9.4v5.2l4.4-2.6z" fill="currentColor" stroke="none" />
+                        </svg>
+                    </span>
+                    Video
+                </h3>
                 <section>
                     <label class="toggle"><input type="checkbox" id="enable_video" checked /> <span>Enable video</span></label>
                     <label class="toggle"><input type="checkbox" id="energysaving" /> <span>Energy saving <em>no video, black screen</em></span></label>
@@ -75,12 +148,24 @@
                         <span>Frame rate</span>
                         <input type="range" id="frame_rate" value="0" /><output>30</output><span class="unit">fps</span>
                     </label>
-                    <button id="fullscreen" type="button" class="btn">Toggle fullscreen</button>
+                    <button id="fullscreen" type="button" class="btn btn_ghost">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />
+                        </svg>
+                        Toggle fullscreen
+                    </button>
                 </section>
             </div>
 
-            <div class="tab_panel" data-tab-panel="input" role="tabpanel">
-                <h3>Input devices</h3>
+            <div class="tab_panel" id="panel_input" data-tab-panel="input" role="tabpanel" aria-labelledby="tab_input">
+                <h3>
+                    <span class="sec_icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6.5 3.5l9.6 9.6-4.2.8 2.4 4.1-2 1.2-2.4-4.1-3.4 3z" />
+                        </svg>
+                    </span>
+                    Input devices
+                </h3>
                 <section>
                     <label class="toggle"><input type="checkbox" id="enable_mouse" checked /> <span>Enable mouse</span></label>
                     <label class="toggle"><input type="checkbox" id="enable_stylus" checked /> <span>Enable stylus</span></label>
@@ -94,35 +179,76 @@
                         <input type="range" id="min_pressure" min="0" max="1" step="0.01" value="0" />
                     </label>
                 </section>
-                <h3>Client</h3>
+
+                <h3>
+                    <span class="sec_icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="7" y="2.5" width="10" height="19" rx="2.2" />
+                            <path d="M10.5 18.5h3" />
+                        </svg>
+                    </span>
+                    Client
+                </h3>
                 <section {{#if (not uinput_enabled)}}class="hide" {{/if}}>
                     <label class="field_label" for="client_name">Client name</label>
-                    <input type="text" id="client_name" placeholder="Optional" />
+                    <input type="text" id="client_name" placeholder="Optional" autocomplete="off" />
                     <span class="hint">Useful to distinguish multiple devices.</span>
                 </section>
                 <section>
                     <button id="custom_input_areas" type="button" class="{{#if (not enable_custom_input_areas)}}btn hide{{else}}btn{{/if}}">Custom input area</button>
                     <label class="{{#if (not enable_custom_input_areas)}}toggle hide{{else}}toggle{{/if}}">
                         <input type="checkbox" id="enable_custom_input_areas" />
-                        <span>Enable custom input area</span>
+                        <span>Enable custom input area <em>map just a part of the screen</em></span>
                     </label>
                 </section>
             </div>
 
-            <div class="tab_panel" data-tab-panel="more" role="tabpanel">
-                <h3>Display</h3>
+            <div class="tab_panel" id="panel_more" data-tab-panel="more" role="tabpanel" aria-labelledby="tab_more">
+                <h3>
+                    <span class="sec_icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="16" rx="2.5" />
+                            <path d="M3 9h18M9 20V9" />
+                        </svg>
+                    </span>
+                    Display
+                </h3>
                 <section id="displayoptions">
                     <label id="leftylabel" class="chip"><input type="checkbox" id="lefty" /> <span>Left-handed</span></label>
                     <button id="vanish" type="button" class="btn btn_ghost">Hide until reload</button>
                 </section>
-                <h3>Statistics</h3>
-                <section id="stats_section">
-                    <div class="stat_row">
-                        <span>FPS (receiving)</span>
+
+                <h3>
+                    <span class="sec_icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 15l4.5-5 3.5 3.5L17 7l3 3" />
+                            <path d="M4 20h16" />
+                        </svg>
+                    </span>
+                    Statistics
+                </h3>
+                <section id="stats_section" class="stats_grid">
+                    <div class="metric">
+                        <span class="metric_label">FPS</span>
                         <output id="fps">0</output>
+                        <span class="metric_note">receiving</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric_label">Stream</span>
+                        <output id="conn_state" class="metric_state" data-state="connecting">Connecting</output>
+                        <span class="metric_note">websocket</span>
                     </div>
                 </section>
-                <h3>Diagnostics</h3>
+
+                <h3>
+                    <span class="sec_icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 7l6-3 4 3 6-3v13l-6 3-4-3-6 3z" />
+                            <path d="M10 4v13M14 7v13" />
+                        </svg>
+                    </span>
+                    Diagnostics
+                </h3>
                 <section id="debug_section">
                     <label class="toggle"><input type="checkbox" id="enable_debug_overlay" /> <span>Debug overlay</span></label>
                 </section>
@@ -130,27 +256,67 @@
                     <span class="field_label">Log</span>
                     <pre class="log" id="log"></pre>
                 </section>
+
+                <h3>
+                    <span class="sec_icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="9" />
+                            <path d="M12 11v5M12 8h.01" />
+                        </svg>
+                    </span>
+                    About
+                </h3>
+                <section class="about_card">
+                    <span class="brand_mark brand_mark_sm" aria-hidden="true">
+                        <svg viewBox="0 0 32 32" fill="none">
+                            <circle cx="16" cy="16" r="8" stroke="currentColor" stroke-width="2" opacity=".92" />
+                            <circle cx="16" cy="16" r="2.6" fill="currentColor" />
+                        </svg>
+                    </span>
+                    <div class="about_text">
+                        <span class="about_name">Proximity <span class="badge">AGPL-3.0</span></span>
+                        <span class="hint">A fork of Weylus. Your screen stays on your local network.</span>
+                    </div>
+                </section>
             </div>
         </div>
     </div>
 
     <!-- Floating quick actions over the video -->
-    <div id="quickbar">
-        <button class="qk_btn" id="qk_f11" title="Fullscreen" aria-label="Toggle fullscreen">
+    <div id="quickbar" role="toolbar" aria-label="Quick actions">
+        <button class="qk_btn" id="qk_f11" type="button" title="Fullscreen" aria-label="Toggle fullscreen" aria-pressed="false" data-tip="Fullscreen">
             <svg viewBox="0 0 24 24" width="1.4em" height="1.4em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg>
         </button>
-        <button class="qk_btn" id="qk_audio" title="PC audio on/off" aria-label="Toggle PC audio">
+        <button class="qk_btn" id="qk_audio" type="button" title="PC audio on/off" aria-label="Toggle PC audio" aria-pressed="false" data-tip="PC audio">
             <svg viewBox="0 0 24 24" width="1.4em" height="1.4em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.25 4.75v14.5l-4.75-3.75H3.75A1 1 0 0 1 2.75 14.5v-5a1 1 0 0 1 1-1h2.75l4.75-3.75z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18.25 6.5a8.5 8.5 0 0 1 0 11"/></svg>
         </button>
-        <button class="qk_btn" id="qk_softkb" title="Keyboard" aria-label="Toggle keyboard">
+        <button class="qk_btn" id="qk_softkb" type="button" title="Keyboard" aria-label="Toggle keyboard" aria-pressed="false" data-tip="Keyboard">
             <svg viewBox="0 0 24 24" width="1.4em" height="1.4em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.75" y="5.75" width="18.5" height="12.5" rx="2"/><path d="M6 9.25h.01M9.25 9.25h.01M12.5 9.25h.01M15.75 9.25h.01M18.99 9.25h.01"/><path d="M5.5 12h.01M8.5 12h.01M11.5 12h.01M14.5 12h.01M17.5 12h.01"/><path d="M9 14.75h6"/></svg>
+        </button>
+        <span class="qk_sep" aria-hidden="true"></span>
+        <button id="settings_fab" class="qk_btn qk_settings" type="button" title="Settings" aria-label="Open settings" aria-expanded="false" data-tip="Settings">
+            <svg viewBox="0 0 24 24" width="1.4em" height="1.4em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+                <circle cx="15" cy="7" r="2" />
+                <circle cx="9" cy="17" r="2" />
+            </svg>
         </button>
     </div>
 
     <!-- Text funnel bar for the on-screen keyboard -->
     <div id="softkb_bar" class="hide">
-        <input type="text" id="softkb_input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Type here..." />
-        <button id="softkb_close" type="button" title="Close" aria-label="Close keyboard">✕</button>
+        <span class="softkb_icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2.75" y="5.75" width="18.5" height="12.5" rx="2" />
+                <path d="M6 9.25h.01M9.25 9.25h.01M12.5 9.25h.01M15.75 9.25h.01M18.99 9.25h.01M5.5 12h.01M8.5 12h.01M11.5 12h.01M14.5 12h.01M17.5 12h.01M9 14.75h6" />
+            </svg>
+        </span>
+        <input type="text" id="softkb_input" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Type to your PC&hellip;" aria-label="Text to send to your PC" />
+        <button id="softkb_close" type="button" title="Close" aria-label="Close keyboard">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+        </button>
     </div>
 
     <script>
@@ -168,24 +334,77 @@
                 handle.click();
             }
 
+            function syncPanelState() {
+                var hidden = settings.classList.contains("hide");
+                var gone = settings.classList.contains("vanish");
+                var open = !hidden && !gone;
+                document.body.classList.toggle("panel_open", open);
+                document.body.classList.toggle("panel_gone", gone);
+                fab.setAttribute("aria-expanded", open ? "true" : "false");
+            }
+
             closeBtn.addEventListener("click", togglePanel);
             fab.addEventListener("click", togglePanel);
 
+            new MutationObserver(syncPanelState).observe(settings, {
+                attributes: true,
+                attributeFilter: ["class"]
+            });
+            syncPanelState();
+
             var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab_btn"));
             var panels = Array.prototype.slice.call(document.querySelectorAll("[data-tab-panel]"));
-            tabs.forEach(function (tab) {
+
+            function activateTab(tab, focus) {
+                tabs.forEach(function (t) {
+                    var active = t === tab;
+                    t.classList.toggle("active", active);
+                    t.setAttribute("aria-selected", active ? "true" : "false");
+                    t.tabIndex = active ? 0 : -1;
+                    if (active && focus) { t.focus(); }
+                });
+                panels.forEach(function (p) {
+                    p.classList.toggle("active", p.getAttribute("data-tab-panel") === tab.getAttribute("data-tab"));
+                });
+                scroll.scrollTop = 0;
+            }
+
+            tabs.forEach(function (tab, i) {
                 tab.addEventListener("click", function (e) {
                     e.stopPropagation();
-                    tabs.forEach(function (t) {
-                        var active = t === tab;
-                        t.classList.toggle("active", active);
-                        t.setAttribute("aria-selected", active ? "true" : "false");
-                    });
-                    panels.forEach(function (p) {
-                        p.classList.toggle("active", p.getAttribute("data-tab-panel") === tab.getAttribute("data-tab"));
-                    });
-                    scroll.scrollTop = 0;
+                    activateTab(tab, false);
                 });
+                tab.addEventListener("keydown", function (e) {
+                    var next = null;
+                    if (e.key === "ArrowRight") { next = tabs[(i + 1) % tabs.length]; }
+                    else if (e.key === "ArrowLeft") { next = tabs[(i - 1 + tabs.length) % tabs.length]; }
+                    else if (e.key === "Home") { next = tabs[0]; }
+                    else if (e.key === "End") { next = tabs[tabs.length - 1]; }
+                    if (next) {
+                        e.preventDefault();
+                        activateTab(next, true);
+                    }
+                });
+            });
+            tabs.forEach(function (t, i) { t.tabIndex = i === 0 ? 0 : -1; });
+
+            // Paint the filled part of range tracks. lib.js updates the
+            // values/outputs itself; this only mirrors the value into CSS.
+            var ranges = Array.prototype.slice.call(document.querySelectorAll("#settings input[type=range]"));
+            function paintRange(input) {
+                var min = parseFloat(input.min) || 0;
+                var max = parseFloat(input.max) || 100;
+                var value = parseFloat(input.value) || 0;
+                var pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
+                input.style.setProperty("--fill", Math.min(100, Math.max(0, pct)) + "%");
+            }
+            ranges.forEach(function (input) {
+                paintRange(input);
+                input.addEventListener("input", function () { paintRange(input); });
+                input.addEventListener("change", function () { paintRange(input); });
+            });
+            window.addEventListener("load", function () {
+                requestAnimationFrame(function () { ranges.forEach(paintRange); });
             });
         })();
     </script>
