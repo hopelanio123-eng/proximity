@@ -199,6 +199,10 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     let output_buf = output.buffer().unwrap();
 
     page_home.end();
+    // fltk stores children of a group with window-absolute coordinates; the
+    // page widgets above were authored relative to their page, so put them
+    // where the page actually sits.
+    shift_children(&mut page_home, NAV_W);
 
     // --- Settings page -----------------------------------------------------
     let mut page_settings = Group::default()
@@ -363,6 +367,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     }
 
     page_settings.end();
+    shift_children(&mut page_settings, NAV_W);
     page_settings.hide();
 
     nav_home_btn.set_callback(|_| show_page(true));
@@ -605,6 +610,16 @@ const BORDER: i32 = 30;
 /// Which side page is currently visible (true = home). Kept in a static so the
 /// nav callbacks and the skin can share the state without capturing widgets.
 static HOME_ACTIVE: Mutex<bool> = Mutex::new(true);
+
+/// Move every child of a group horizontally while keeping the group itself
+/// untouched (fltk does not offset the coordinates of grouped widgets).
+fn shift_children(g: &mut Group, dx: i32) {
+    for i in 0..g.children() {
+        if let Some(mut child) = g.child(i) {
+            child.set_pos(child.x() + dx, child.y());
+        }
+    }
+}
 
 /// Switch between the "Главная" (home) and "Настройки" (settings) pages and
 /// restyle the sidebar items to make the active entry obvious.
