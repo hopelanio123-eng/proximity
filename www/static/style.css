@@ -1280,6 +1280,37 @@ body:not(.stage_live) #quickbar #settings_fab {
     flex: none;
 }
 
+/* The toolbar can shrink to a single round handle on small screens. */
+#quickbar_toggle {
+    flex: none;
+}
+
+#quickbar_toggle svg {
+    width: 1.1rem;
+    height: 1.1rem;
+    transition: transform 0.18s ease;
+}
+
+#quickbar.minimized #quickbar_toggle {
+    background: var(--surface-3);
+    color: var(--text);
+}
+
+#quickbar.minimized #quickbar_toggle svg {
+    transform: rotate(180deg);
+}
+
+/* Only hide the other actions while the stream is live; the pre-stream
+   toolbar still needs its settings button. */
+body.stage_live #quickbar.minimized .qk_btn:not(#quickbar_toggle),
+body.stage_live #quickbar.minimized .qk_sep {
+    display: none;
+}
+
+body:not(.stage_live) #quickbar #quickbar_toggle {
+    display: none;
+}
+
 body.panel_open #settings_fab {
     background: var(--accent-fill);
     color: #fff;

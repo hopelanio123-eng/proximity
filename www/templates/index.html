@@ -306,6 +306,11 @@
                 <circle cx="9" cy="17" r="2" />
             </svg>
         </button>
+        <button id="quickbar_toggle" class="qk_btn qk_toggle" type="button" title="Свернуть панель" aria-label="Свернуть панель" aria-expanded="true" aria-controls="quickbar" data-tip="Свернуть панель">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M6 9l6 6 6-6" />
+            </svg>
+        </button>
     </div>
 
     <!-- Text funnel bar for the on-screen keyboard -->
@@ -357,6 +362,35 @@
                 attributeFilter: ["class"]
             });
             syncPanelState();
+
+            // The bottom quick-action bar can be folded into a single handle
+            // so the video gets the whole screen on a phone.
+            var quickbar = document.getElementById("quickbar");
+            var quickbarToggle = document.getElementById("quickbar_toggle");
+            var quickbarCollapsed = false;
+            try {
+                quickbarCollapsed = localStorage.getItem("proximity_quickbar_collapsed") === "1";
+            } catch (e) {}
+            function reflectQuickbar() {
+                quickbar.classList.toggle("minimized", quickbarCollapsed);
+                quickbarToggle.setAttribute("aria-expanded", quickbarCollapsed ? "false" : "true");
+                var label = quickbarCollapsed ? "Развернуть панель" : "Свернуть панель";
+                quickbarToggle.setAttribute("aria-label", label);
+                quickbarToggle.setAttribute("title", label);
+                quickbarToggle.setAttribute("data-tip", label);
+            }
+            reflectQuickbar();
+            quickbarToggle.addEventListener("click", function (e) {
+                e.stopPropagation();
+                quickbarCollapsed = !quickbarCollapsed;
+                reflectQuickbar();
+                try {
+                    localStorage.setItem(
+                        "proximity_quickbar_collapsed",
+                        quickbarCollapsed ? "1" : "0"
+                    );
+                } catch (e) {}
+            });
 
             // Bottom sheet: the grabber collapses on tap; dragging the header
             // down also collapses it, like a native mobile sheet.
