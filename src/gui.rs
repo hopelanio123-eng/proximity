@@ -2,6 +2,8 @@ use std::cmp::min;
 use std::io::Cursor;
 use std::iter::Iterator;
 use std::net::{IpAddr, SocketAddr};
+#[cfg(target_os = "windows")]
+use std::net::UdpSocket;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use fltk::app;
@@ -89,6 +91,79 @@ fn install_fonts() {
         unsafe {
             fltk_sys::fl::Fl_set_font2(face, name);
         }
+    }
+}
+
+/// Find the LAN address when the server binds to an unspecified address.
+///
+/// Windows can route ordinary traffic through a VPN or a virtual adapter, so a
+/// plain UDP route probe is not enough: the phone on the local Wi-Fi still
+/// needs the physical LAN address. `ipconfig` is used to enumerate IPv4
+/// addresses and a private address is preferred; the UDP probe remains a
+/// fallback.
+#[cfg(target_os = "windows")]
+fn guess_local_ip(ipv4: bool) -> Option<IpAddr> {
+    if ipv4 {
+        if let Some(ip) = local_ipv4_from_ipconfig() {
+            return Some(IpAddr::V4(ip));
+        }
+    }
+    udp_local_ip(ipv4)
+}
+
+#[cfg(target_os = "windows")]
+fn local_ipv4_from_ipconfig() -> Option<std::net::Ipv4Addr> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let output = Command::new("ipconfig")
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut candidates = Vec::new();
+    for line in text.lines() {
+        if !line.to_ascii_lowercase().contains("ipv4") {
+            continue;
+        }
+        if let Some(value) = line.rsplit(':').next() {
+            if let Ok(std::net::IpAddr::V4(ip)) = value.trim().parse::<IpAddr>() {
+                if !ip.is_loopback() && !ip.is_link_local() && !ip.is_unspecified() {
+                    candidates.push(ip);
+                }
+            }
+        }
+    }
+    candidates.sort_by_key(|ip| {
+        let o = ip.octets();
+        if o[0] == 192 && o[1] == 168 {
+            0
+        } else if o[0] == 10 {
+            1
+        } else if o[0] == 172 && (16..=31).contains(&o[1]) {
+            2
+        } else {
+            3
+        }
+    });
+    candidates.first().copied()
+}
+
+#[cfg(target_os = "windows")]
+fn udp_local_ip(ipv4: bool) -> Option<IpAddr> {
+    let (bind_addr, target) = if ipv4 {
+        ("0.0.0.0:0", "8.8.8.8:80")
+    } else {
+        ("[::]:0", "[2001:4860:4860::8888]:80")
+    };
+    let socket = UdpSocket::bind(bind_addr).ok()?;
+    socket.connect(target).ok()?;
+    let ip = socket.local_addr().ok()?.ip();
+    if ip.is_unspecified() || ip.is_loopback() {
+        None
+    } else {
+        Some(ip)
     }
 }
 
@@ -755,9 +830,14 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                 #[cfg(target_os = "windows")]
                 {
                     if web_sock.ip().is_unspecified() {
+                        if let Some(ip) = guess_local_ip(web_sock.is_ipv4()) {
+                            web_sock.set_ip(ip);
+                        }
+                    }
+                    if web_sock.ip().is_unspecified() {
                         output_server_addr.set_value("http://<your ip address>");
                     } else {
-                        output_server_addr.set_value(&format!("http://{}", web_sock.to_string()));
+                        output_server_addr.set_value(&format!("http://{}", web_sock));
                     }
                 }
                 output_server_addr.show();
