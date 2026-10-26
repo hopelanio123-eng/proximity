@@ -216,28 +216,32 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_id("page_home");
 
     Frame::default()
-        .with_size(PAGE_W, 62)
-        .with_pos(PAD, 24)
+        .with_size(PAGE_W, 76)
+        .with_pos(PAD, 16)
         .with_align(Align::Left | Align::Top | Align::Inside.bits())
         .with_label("Управляй компьютером\nиз любого браузера")
         .with_id("hero_title");
 
     Frame::default()
         .with_size(PAGE_W, 18)
-        .with_pos(PAD, 92)
+        .with_pos(PAD, 100)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("Запусти сервер и открой адрес на телефоне")
         .with_id("hero_sub");
 
     // Server card: state, primary action, connect address and the QR code.
+    // Platforms without a QR keep a shorter card and give the space to the log.
+    let server_card_h = if cfg!(target_os = "linux") { 220 } else { 172 };
+    let log_caption_y = 130 + server_card_h + 24;
+    let log_y = log_caption_y + 20;
     Frame::default()
-        .with_size(PAGE_W, 220)
-        .with_pos(PAD, 124)
+        .with_size(PAGE_W, server_card_h)
+        .with_pos(PAD, 130)
         .with_id("server_card");
 
     let mut but_toggle = Button::default()
         .with_size(200, 46)
-        .with_pos(PAD + 20, 146)
+        .with_pos(PAD + 20, 152)
         .with_label("Запустить")
         .with_id("btn_toggle");
     but_toggle.draw(draw_primary_button);
@@ -245,14 +249,14 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     Frame::default()
         .with_size(216, 18)
-        .with_pos(PAD + 20, 212)
+        .with_pos(PAD + 20, 218)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("Сервер не запущен")
         .with_id("offline_hint");
 
     let mut label_addr = Frame::default()
         .with_size(216, 16)
-        .with_pos(PAD + 20, 210)
+        .with_pos(PAD + 20, 216)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("АДРЕС ДЛЯ ПОДКЛЮЧЕНИЯ")
         .with_id("label_addr");
@@ -267,20 +271,20 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
             },
             40,
         )
-        .with_pos(PAD + 20, 228)
+        .with_pos(PAD + 20, 234)
         .with_label("")
         .with_id("output_addr");
     output_server_addr.hide();
 
     let mut qr_frame = Frame::default()
         .with_size(180, 180)
-        .with_pos(PAD + 256, 142)
+        .with_pos(PAD + 256, 148)
         .with_id("qr_frame");
     qr_frame.hide();
 
     let mut qr_hint = Frame::default()
         .with_size(180, 180)
-        .with_pos(PAD + 256, 142)
+        .with_pos(PAD + 256, 148)
         .with_align(Align::Center | Align::Inside.bits())
         .with_label("QR-код появится\nпосле запуска")
         .with_id("qr_hint");
@@ -291,22 +295,22 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     Frame::default()
         .with_size(PAGE_W, 14)
-        .with_pos(PAD, 368)
+        .with_pos(PAD, log_caption_y)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("ЖУРНАЛ")
         .with_id("log_caption");
 
     Frame::default()
         .with_size(PAGE_W, 14)
-        .with_pos(PAD, 368)
+        .with_pos(PAD, log_caption_y)
         .with_align(Align::Right | Align::Inside.bits())
         .with_label("СООБЩЕНИЯ СЕРВЕРА")
         .with_id("log_hint");
 
     let output_buf = TextBuffer::default();
     let mut output = TextDisplay::default()
-        .with_size(PAGE_W, 304)
-        .with_pos(PAD, 388)
+        .with_size(PAGE_W, WIN_H - log_y - 28)
+        .with_pos(PAD, log_y)
         .with_id("log_display");
     output.set_buffer(output_buf);
     let output_buf = output.buffer().unwrap();
@@ -417,8 +421,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     input_port.set_value(&config.web_port.to_string());
 
     let mut check_auto_start = CheckButton::default()
-        .with_size(PAGE_W - 36, 36)
-        .with_pos(PAD + 18, 420)
+        .with_size(PAGE_W - 36, 48)
+        .with_pos(PAD + 18, 414)
         .with_label("Автозапуск")
         .with_id("check_auto");
     check_auto_start.draw(draw_switch);
@@ -426,10 +430,17 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     check_auto_start.set_tooltip("Start Proximity server immediately on program start.");
     check_auto_start.set_checked(config.auto_start);
 
+    Frame::default()
+        .with_size(PAGE_W - 36, 14)
+        .with_pos(PAD + 18, 444)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("Поднимать сервер при старте приложения")
+        .with_id("desc_auto");
+
     #[cfg(target_os = "linux")]
     let mut check_wayland = CheckButton::default()
-        .with_size(PAGE_W - 36, 40)
-        .with_pos(PAD + 18, 584)
+        .with_size(PAGE_W - 36, 48)
+        .with_pos(PAD + 18, 632)
         .with_label("Wayland / PipeWire")
         .with_id("check_wayland");
     #[cfg(target_os = "linux")]
@@ -441,6 +452,12 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         capturing for Wayland using PipeWire and GStreamer.",
         );
         check_wayland.set_checked(config.wayland_support);
+        Frame::default()
+            .with_size(PAGE_W - 36, 14)
+            .with_pos(PAD + 18, 662)
+            .with_align(Align::Left | Align::Inside.bits())
+            .with_label("Захват экрана через PipeWire (экспериментально)")
+            .with_id("desc_wayland");
     }
 
     Frame::default()
@@ -450,18 +467,31 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_label("УСКОРЕНИЕ")
         .with_id("sec_hw");
 
-    let hw_card_h = if cfg!(target_os = "linux") { 144 } else { 96 };
+    let hw_card_h = if cfg!(target_os = "linux") { 170 } else { 118 };
     Frame::default()
         .with_size(PAGE_W, hw_card_h)
         .with_pos(PAD, 516)
         .with_id("card_hw");
 
     let mut check_native_hw_accel = CheckButton::default()
-        .with_size(200, 40)
-        .with_pos(PAD + 18, 536)
+        .with_size(PAGE_W - 36, 48)
+        .with_pos(PAD + 18, 528)
         .with_id("check_native");
     check_native_hw_accel.draw(draw_switch);
     check_native_hw_accel.super_draw(false);
+
+    #[cfg(target_os = "linux")]
+    let native_desc = "Кодирование через VAAPI";
+    #[cfg(target_os = "macos")]
+    let native_desc = "Кодирование через VideoToolbox";
+    #[cfg(target_os = "windows")]
+    let native_desc = "Аппаратное кодирование через Media Foundation";
+    Frame::default()
+        .with_size(PAGE_W - 36, 14)
+        .with_pos(PAD + 18, 558)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label(native_desc)
+        .with_id("desc_native");
 
     #[cfg(target_os = "linux")]
     {
@@ -488,13 +518,23 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     }
 
     let mut check_nvenc = CheckButton::default()
-        .with_size(200, 40)
-        .with_pos(PAD + 226, 536)
+        .with_size(PAGE_W - 36, 48)
+        .with_pos(PAD + 18, 580)
         .with_label("NVENC")
         .with_id("check_nvenc");
     check_nvenc.draw(draw_switch);
     check_nvenc.super_draw(false);
     check_nvenc.set_tooltip("Try to use Nvidia's NVENC to encode the video via GPU.");
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    {
+        Frame::default()
+            .with_size(PAGE_W - 36, 14)
+            .with_pos(PAD + 18, 610)
+            .with_align(Align::Left | Align::Inside.bits())
+            .with_label("Кодирование через NVIDIA NVENC")
+            .with_id("desc_nvenc");
+    }
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     check_nvenc.set_checked(config.try_nvenc);
@@ -842,10 +882,12 @@ fn apply_skin() {
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("head_title") {
         f.set_label_font(Font::HelveticaBold);
-        f.set_label_size(20);
+        f.set_label_size(18);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("head_sub") {
-        f.set_label_size(11);
+        f.set_label_font(Font::Courier);
+        f.set_label_size(10);
+        f.set_label_color(dim);
     }
     // Cards and their captions on the settings page.
     for id in ["card_skin", "card_net", "card_hw"] {
@@ -854,12 +896,31 @@ fn apply_skin() {
             f.set_color(surface);
         }
     }
-    for id in ["theme_label", "label_access", "label_bind", "label_port"] {
+    for id in ["desc_auto", "desc_native", "desc_nvenc", "desc_wayland"] {
         if let Some(mut f) = app::widget_from_id::<Frame>(id) {
             f.set_frame(FrameType::NoBox);
             f.set_label_color(dim);
-            f.set_label_font(Font::HelveticaBold);
-            f.set_label_size(10);
+            f.set_label_size(12);
+        }
+    }
+    // Eyebrow captions: uppercase, tracked, third-level color.
+    for id in [
+        "nav_caption",
+        "sec_skin",
+        "sec_net",
+        "sec_hw",
+        "theme_label",
+        "label_access",
+        "label_bind",
+        "label_port",
+        "log_caption",
+        "log_hint",
+        "label_addr",
+    ] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_frame(FrameType::NoBox);
+            f.draw(draw_eyebrow);
+            f.super_draw(false);
         }
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("brand_mark") {
@@ -880,8 +941,8 @@ fn apply_skin() {
         w.set_color(surface);
         w.set_label_color(dim);
         w.set_text_color(text);
-        w.set_text_font(Font::CourierBold);
-        w.set_text_size(13);
+        w.set_text_font(Font::Courier);
+        w.set_text_size(12);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("server_card") {
         f.set_frame(card_frame());
@@ -901,7 +962,7 @@ fn apply_skin() {
         w.set_frame(field_frame());
         w.set_color(surface);
         w.set_text_color(text);
-        w.set_text_font(Font::Helvetica);
+        w.set_text_font(Font::Courier);
         w.set_text_size(13);
         w.set_cursor_color(accent);
     }
@@ -909,6 +970,7 @@ fn apply_skin() {
         c.set_color(surface);
         c.set_text_color(text);
         c.set_text_size(13);
+        c.set_selection_color(accent);
         c.redraw();
     }
     for id in ["check_auto", "check_native", "check_nvenc", "check_wayland"] {
@@ -931,7 +993,7 @@ fn apply_skin() {
         f.set_frame(card_frame());
         f.set_color(Color::White);
     }
-    for id in ["hero_title", "hero_sub", "qr_hint", "offline_hint", "label_addr", "log_caption"] {
+    for id in ["hero_title", "hero_sub", "qr_hint", "offline_hint"] {
         if let Some(mut f) = app::widget_from_id::<Frame>(id) {
             f.set_frame(FrameType::NoBox);
         }
@@ -939,7 +1001,7 @@ fn apply_skin() {
     if let Some(mut f) = app::widget_from_id::<Frame>("hero_title") {
         f.set_label_color(text);
         f.set_label_font(Font::HelveticaBold);
-        f.set_label_size(22);
+        f.set_label_size(26);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("hero_sub") {
         f.set_label_color(dim);
@@ -950,18 +1012,6 @@ fn apply_skin() {
             f.set_label_color(dim);
             f.set_label_size(12);
         }
-    }
-    for id in ["label_addr", "log_caption"] {
-        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
-            f.set_label_color(dim);
-            f.set_label_font(Font::HelveticaBold);
-            f.set_label_size(10);
-        }
-    }
-    if let Some(mut f) = app::widget_from_id::<Frame>("log_hint") {
-        f.set_frame(FrameType::NoBox);
-        f.set_label_color(dim);
-        f.set_label_size(10);
     }
 
     // Decorative captions sit directly on the glow backdrop, so they must not
@@ -980,17 +1030,7 @@ fn apply_skin() {
         }
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("nav_caption") {
-        f.set_label_color(dim);
-        f.set_label_size(10);
-        f.set_label_font(Font::HelveticaBold);
         f.redraw();
-    }
-    for id in ["sec_skin", "sec_net", "sec_hw"] {
-        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
-            f.set_label_color(dim);
-            f.set_label_size(10);
-            f.set_label_font(Font::HelveticaBold);
-        }
     }
     // The page groups must not paint their own box over the backdrop.
     for id in ["page_home", "page_settings"] {
@@ -1064,8 +1104,8 @@ fn draw_page_glow(f: &mut Frame) {
     draw::draw_rectf(x, y + band, w, h - band);
 }
 
-/// Primary action in the server card: a solid accent pill with a hover tint
-/// and a pressed shade; all painting is ours, so the GTK box stays away.
+/// Primary action in the server card: a solid accent pill with the launcher's
+/// fill/hover pair and a small press contraction, all painted by hand.
 fn draw_primary_button(b: &mut Button) {
     let skin = skin();
     let hovered = app::belowmouse::<Button>()
@@ -1074,15 +1114,22 @@ fn draw_primary_button(b: &mut Button) {
     let (x, y, w, h) = (b.x(), b.y(), b.w(), b.h());
     let live = SERVER_LIVE.load(Ordering::Relaxed);
     let base_color = if live { skin.danger } else { skin.accent };
-    let base = if b.value() {
-        base_color.mix(Rgb24::hex(0x000000), 180)
+    let pressed = b.value();
+    let base = if pressed {
+        base_color.mix(Rgb24::hex(0x000000), 120)
     } else if hovered {
-        base_color.mix(Rgb24::hex(0xffffff), 90)
+        if live {
+            skin.danger.mix(Rgb24::hex(0xffffff), 90)
+        } else {
+            skin.accent_pressed
+        }
     } else {
         base_color
     };
+    // The 0.96 press scale is painted as a smaller pill.
+    let inset = if pressed { 2 } else { 0 };
     draw::set_draw_color(Color::from(base));
-    draw::draw_rounded_rectf(x, y, w, h, h / 2);
+    draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, (h - 2 * inset) / 2);
     draw::set_font(Font::HelveticaBold, 15);
     draw::set_draw_color(Color::White);
     draw::draw_text2(&b.label(), x, y, w, h, Align::Center);
@@ -1115,30 +1162,34 @@ fn draw_choice(c: &mut Choice) {
     draw::draw_line(cx, cy + 2, cx + 4, cy - 2);
 }
 
-/// Toggle switch drawn in place of the stock check box: an accent track with
-/// a knob for "on" and a recessed slot for "off".
+/// Toggle switch drawn in place of the stock check box, following the
+/// launcher's SliderButton: 50x28 track, 20px knob, accent-on-surface when
+/// on and a white knob on a recessed slot when off. The row title sits left.
 fn draw_switch(c: &mut CheckButton) {
     let skin = skin();
     let on = c.is_checked();
     let (x, y, h) = (c.x(), c.y(), c.h());
-    let track_w = 40;
-    let track_h = 22;
+    let track_w = 50;
+    let track_h = 28;
+    let tx = x + c.w() - track_w;
     let ty = y + (h - track_h) / 2;
-    draw::set_draw_color(Color::from(if on { skin.accent } else { skin.track }));
-    draw::draw_rounded_rectf(x, ty, track_w, track_h, track_h / 2);
-    let d = track_h - 6;
-    let kx = if on { x + track_w - d - 3 } else { x + 3 };
+    let off_track = skin.track;
+    let on_track = skin.surface.mix(skin.accent_soft, 400);
+    draw::set_draw_color(Color::from(if on { on_track } else { off_track }));
+    draw::draw_rounded_rectf(tx, ty, track_w, track_h, track_h / 2);
+    let d = 20;
+    let kx = if on { tx + track_w - d - 4 } else { tx + 4 };
     let knob = if on {
-        Color::White
+        skin.accent_soft
     } else {
-        Color::from(skin.dim)
+        Rgb24::hex(0xffffff)
     };
-    draw::set_draw_color(knob);
-    draw::draw_circle_fill(kx + d / 2, ty + track_h / 2, d, knob);
+    draw::set_draw_color(Color::from(knob));
+    draw::draw_circle_fill(kx + d / 2, ty + track_h / 2, d, Color::from(knob));
     if !c.label().is_empty() {
-        draw::set_font(Font::Helvetica, 13);
+        draw::set_font(Font::HelveticaBold, 14);
         draw::set_draw_color(Color::from(if c.active() { skin.text } else { skin.dim }));
-        draw::draw_text(&c.label(), x + track_w + 12, y + h / 2 + 5);
+        draw::draw_text(&c.label(), x, y + 15);
     }
 }
 
@@ -1153,12 +1204,14 @@ fn draw_nav_item(b: &mut Button, home: bool) {
         .unwrap_or(false);
     let (x, y, w, h) = (b.x(), b.y(), b.w(), b.h());
     let cy = y + h / 2;
+    let pressed = b.value();
+    let inset = if pressed { 1 } else { 0 };
     if active {
         draw::set_draw_color(Color::from(skin.pill));
-        draw::draw_rounded_rectf(x, y, w, h, 10);
+        draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, 10);
     } else if hovered {
         draw::set_draw_color(Color::from(skin.nav_bg.mix(skin.pill, 550)));
-        draw::draw_rounded_rectf(x, y, w, h, 10);
+        draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, 10);
     }
     let icon_color = if active {
         Color::from(skin.accent_soft)
@@ -1199,6 +1252,32 @@ fn draw_nav_item(b: &mut Button, home: bool) {
         13,
     );
     draw::draw_text(&b.label(), x + 52, cy + 5);
+}
+
+/// Small caps eyebrow labels get the launcher's letter spacing; FLTK has no
+/// tracking, so the string is drawn character by character.
+fn draw_eyebrow(f: &mut Frame) {
+    let skin = skin();
+    let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
+    let label = f.label();
+    if label.is_empty() {
+        return;
+    }
+    draw::set_font(Font::HelveticaBold, 10);
+    draw::set_draw_color(Color::from(skin.log_text));
+    let spacing = 1.4f64;
+    let mut total = spacing * label.chars().count().saturating_sub(1) as f64;
+    for ch in label.chars() {
+        total += draw::width(&ch.to_string());
+    }
+    let right = f.align().bits() & Align::Right.bits() != 0;
+    let mut cx = if right { (x + w) as f64 - total } else { x as f64 };
+    let baseline = y + (h + 7) / 2;
+    for ch in label.chars() {
+        let glyph = ch.to_string();
+        draw::draw_text(&glyph, cx as i32, baseline);
+        cx += draw::width(&glyph) + spacing;
+    }
 }
 
 /// Sidebar island: the floating rail the navigation lives on.
