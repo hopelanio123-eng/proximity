@@ -52,6 +52,8 @@ fn response_from_str(s: &str, content_type: &str) -> Response<Full<Bytes>> {
     Response::builder()
         .status(StatusCode::OK)
         .header("content-type", content_type)
+        .header("cache-control", "no-store, max-age=0")
+        .header("pragma", "no-cache")
         .body(s.to_string().into())
         .unwrap()
 }

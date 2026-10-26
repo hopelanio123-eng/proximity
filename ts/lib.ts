@@ -146,6 +146,15 @@ class Settings {
         // Settings UI
         this.settings = document.getElementById("settings");
         this.settings.onclick = (e) => e.stopPropagation();
+        // On phones the sheet starts collapsed so the stream is visible.
+        // The settings button in the quickbar opens it again.
+        const phoneSheetLayout = window.matchMedia(
+            "(max-width: 760px), (max-height: 520px) and (max-width: 900px)"
+        ).matches;
+        if (phoneSheetLayout) {
+            this.settings.classList.add("hide");
+            this.visible = false;
+        }
         let handle = document.getElementById("handle");
 
         // Settings elements
