@@ -95,20 +95,16 @@ impl Skin {
         // Ambient glow: the top of the window is misted with the accent,
         // echoing the radial gradients of the originals ("glow at the top").
         let bg_start = p.bg.mix(p.glow, 60);
-        let navy = if p.light {
-            Rgb24::hex(0x2b2113)
-        } else {
-            Rgb24::hex(0x000000)
-        };
-        // Sidebar sits a touch darker than the page so the divider reads.
-        let nav_bg = p.bg.mix(navy, 150);
-        // Active pill: slightly lifted surface (works on light and dark).
+        // Sidebar is an island on the alternate surface, one step above the
+        // page - the same relation the launcher uses.
+        let nav_bg = p.surface;
+        // Active pill / selection surface: text color mixed into the panel.
         let towards = if p.light {
             Rgb24::hex(0x000000)
         } else {
             Rgb24::hex(0xffffff)
         };
-        let pill = p.surface.mix(towards, 55);
+        let pill = nav_bg.mix(towards, 120);
         let divider = p.bg.mix(towards, 90);
         let (text, dim, log_text) = if p.light {
             (
@@ -123,9 +119,9 @@ impl Skin {
                 Rgb24::hex(0xa0aab6),
             )
         };
-        // Chrome derived from the surface: a hairline that reads on both
-        // bright and dark palettes, plus the recessed slot of a switch.
-        let border = p.surface.mix(towards, 90);
+        // Chrome derived from the surface: a hairline (text at 10%) and the
+        // recessed slot of a switch.
+        let border = p.surface.mix(towards, 100);
         let track = p.surface.mix(towards, 170);
         let (success, danger) = if p.light {
             (Rgb24::hex(0x1a7f37), Rgb24::hex(0xcf222e))
@@ -154,6 +150,24 @@ impl Skin {
 }
 
 pub const PALETTES: &[Palette] = &[
+    Palette {
+        name: "Анишелл",
+        light: false,
+        bg: Rgb24::hex(0x110f16),
+        surface: Rgb24::hex(0x1c1921),
+        accent: Rgb24::hex(0x744dae),
+        accent_pressed: Rgb24::hex(0x865fc1),
+        glow: Rgb24::hex(0x9977d1),
+    },
+    Palette {
+        name: "Анишелл Светлая",
+        light: true,
+        bg: Rgb24::hex(0xfcfcfe),
+        surface: Rgb24::hex(0xf5f4f8),
+        accent: Rgb24::hex(0x6834a7),
+        accent_pressed: Rgb24::hex(0x5a2695),
+        glow: Rgb24::hex(0x7444b4),
+    },
     Palette {
         name: "Гитхаб Дарк",
         light: false,
