@@ -72,6 +72,7 @@ priority = "optional"
 assets = [
     ["target/release/proximity", "usr/bin/proximity", "755"],
     ["proximity.desktop", "usr/share/applications/proximity.desktop", "755"],
+    ["assets/logo.svg", "usr/share/icons/hicolor/scalable/apps/proximity.svg", "644"],
     ["Readme.md", "usr/share/doc/proximity/README", "644"],
 ]
 

@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-label="Proximity — control your PC from any device with a browser">
+  <defs>
+    <linearGradient id="banner-bg" x1="0" y1="0" x2="1200" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0a0810"/>
+      <stop offset="0.55" stop-color="#100d1a"/>
+      <stop offset="1" stop-color="#0b121a"/>
+    </linearGradient>
+    <linearGradient id="banner-mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9b8cff"/>
+      <stop offset="0.52" stop-color="#5b6cff"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <radialGradient id="banner-glow" cx="0.14" cy="0.08" r="0.72">
+      <stop offset="0" stop-color="#6c5cff" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#6c5cff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="360" fill="#0b0912"/>
+  <rect width="1200" height="360" fill="url(#banner-bg)"/>
+  <rect width="1200" height="360" fill="url(#banner-glow)"/>
+  <circle cx="1110" cy="342" r="250" fill="#22d3ee" opacity="0.045"/>
+
+  <g transform="translate(96 108)">
+    <rect width="144" height="144" rx="40" fill="#6d5dfc"/>
+    <rect width="144" height="144" rx="40" fill="url(#banner-mark)"/>
+    <rect x="1.5" y="1.5" width="141" height="141" rx="38.5" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="3"/>
+    <g transform="translate(40 40)">
+      <circle cx="32" cy="32" r="17" fill="none" stroke="#ffffff" stroke-width="3.6"/>
+      <circle cx="32" cy="32" r="25" fill="none" stroke="#ffffff" stroke-width="2.4" opacity="0.28"/>
+      <circle cx="32" cy="32" r="5.4" fill="#ffffff"/>
+      <circle cx="49.68" cy="14.32" r="4.6" fill="#ffffff"/>
+    </g>
+  </g>
+
+  <text x="300" y="184" fill="#f5f3fb" font-family="Segoe UI, Inter, 'Helvetica Neue', Arial, sans-serif" font-size="86" font-weight="700" letter-spacing="-2">Proximity</text>
+  <text x="304" y="230" fill="#9aa3b2" font-family="Segoe UI, Inter, 'Helvetica Neue', Arial, sans-serif" font-size="26" font-weight="400">Control your PC from any device with a browser.</text>
+
+  <g font-family="Segoe UI, Inter, 'Helvetica Neue', Arial, sans-serif" font-size="17" font-weight="600" text-anchor="middle">
+    <rect x="304" y="264" width="96" height="38" rx="19" fill="#17141f" stroke="#2a2536"/>
+    <text x="352" y="289" fill="#cec8dc">Touch</text>
+    <rect x="412" y="264" width="96" height="38" rx="19" fill="#17141f" stroke="#2a2536"/>
+    <text x="460" y="289" fill="#cec8dc">Stylus</text>
+    <rect x="520" y="264" width="124" height="38" rx="19" fill="#17141f" stroke="#2a2536"/>
+    <text x="582" y="289" fill="#cec8dc">Keyboard</text>
+  </g>
+
+  <rect x="304" y="106" width="44" height="4" rx="2" fill="#22d3ee"/>
+</svg>

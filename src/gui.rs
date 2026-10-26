@@ -29,6 +29,9 @@ use pnet_datalink as datalink;
 
 use crate::config::{write_config, Config};
 use crate::protocol::{CustomInputAreas, Rect};
+use crate::gui_art::{
+    app_icon, draw_glyph, ICON_HOME_SVG, ICON_SETTINGS_SVG, LOGO_GLYPH_SVG,
+};
 use crate::theme::{palette_by_name, Rgb24, Skin, DEFAULT_PALETTE, PALETTES};
 use crate::web::Web2UiMessage::UInputInaccessible;
 
@@ -114,6 +117,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     const PAGE_W: i32 = CONTENT_W - 2 * PAD;
 
     let app = App::default().with_scheme(fltk::app::AppScheme::Gtk);
+    // Create the icon before the window and keep it alive for the whole run:
+    // FLTK stores a pointer to the image supplied here.
+    let window_icon = app_icon();
     let mut wind = Window::default()
         .with_size(WIN_W, WIN_H)
         .center_screen()
@@ -123,6 +129,10 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     wind.set_frame(FrameType::FlatBox);
     wind.set_color(Color::from_rgb(14, 17, 22));
     wind.set_id("main_window");
+    // Use the project mark instead of the default FLTK icon in the taskbar.
+    if window_icon.is_some() {
+        wind.set_icon(window_icon.clone());
+    }
     // The layout is laid out in absolute pixels, so the shell keeps a fixed
     // size instead of stretching the cards.
     wind.size_range(WIN_W, WIN_H, WIN_W, WIN_H);
@@ -154,7 +164,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_size(36, 36)
         .with_pos(24, 26)
         .with_align(Align::Center | Align::Inside.bits())
-        .with_label("P")
+        .with_label("")
         .with_id("brand_mark");
     Frame::default()
         .with_size(130, 24)
@@ -658,6 +668,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                 }
                 is_server_running = true;
                 SERVER_LIVE.store(true, Ordering::Relaxed);
+                kick_status(true);
                 if let Some(mut pill) = app::widget_from_id::<Frame>("status_pill") {
                     pill.set_label("Сервер работает");
                     pill.redraw();
@@ -781,6 +792,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                 }
                 is_server_running = false;
                 SERVER_LIVE.store(false, Ordering::Relaxed);
+                kick_status(false);
                 if let Some(mut pill) = app::widget_from_id::<Frame>("status_pill") {
                     pill.set_label("Сервер выключен");
                     pill.redraw();
@@ -924,10 +936,6 @@ fn apply_skin() {
             f.draw(draw_eyebrow);
             f.super_draw(false);
         }
-    }
-    if let Some(mut f) = app::widget_from_id::<Frame>("brand_mark") {
-        f.set_label_font(Font::HelveticaBold);
-        f.set_label_size(18);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("status_pill") {
         f.set_label_size(12);
@@ -1160,50 +1168,75 @@ fn draw_choice(c: &mut Choice) {
     draw::draw_line(cx, cy + 2, cx + 4, cy - 2);
 }
 
-/// Toggle switch drawn in place of the stock check box, following the
-/// launcher's SliderButton: 50x28 track, 20px knob, accent-on-surface when
-/// on and a white knob on a recessed slot when off. The row title sits left.
-fn draw_switch(c: &mut CheckButton, which: Switch) {
-    let skin = skin();
-    let p = switch_spring(which);
-    let (x, y, h) = (c.x(), c.y(), c.h());
-    let track_w = 50;
-    let track_h = 28;
-    let tx = x + c.w() - track_w;
-    let ty = y + (h - track_h) / 2;
-    let off_track = skin.track;
-    let on_track = skin.surface.mix(skin.accent_soft, 400);
-    draw::set_draw_color(Color::from(
-        off_track.mix(on_track, (1000.0 * p) as u32),
-    ));
-    draw::draw_rounded_rectf(tx, ty, track_w, track_h, track_h / 2);
-    let d = 20;
-    let kx = tx + 4 + (22.0 * p) as i32;
-    let knob = Rgb24::hex(0xffffff).mix(skin.accent_soft, (1000.0 * p) as u32);
-    draw::set_draw_color(Color::from(knob));
-    draw::draw_circle_fill(kx + d / 2, ty + track_h / 2, d, Color::from(knob));
-    if !c.label().is_empty() {
-        draw::set_font(Font::HelveticaBold, 14);
-        draw::set_draw_color(Color::from(if c.active() { skin.text } else { skin.dim }));
-        draw::draw_text(&c.label(), x, y + 15);
-    }
+/// Draw a filled circle centred on (cx, cy). FLTK's primitive takes the
+/// top-left corner of the bounding box, which is easy to get wrong.
+fn fill_circle(cx: i32, cy: i32, d: i32, color: Color) {
+    draw::draw_circle_fill(cx - d / 2, cy - d / 2, d, color);
 }
 
-/// Sidebar entry: a pill for the active page plus a small line icon (house for
-/// home, sliders for settings), following the launcher rail: the selected row
-/// is a softly lifted surface with an accent icon and a bold label.
+/// Toggle switch drawn in place of the stock check box: a compact 46x26 track
+/// with a 20px white knob and a soft shadow. The knob follows the shared
+/// spring, so toggling has a small, springy overshoot.
+fn draw_switch(c: &mut CheckButton, which: Switch) {
+    let skin = skin();
+    let p = switch_spring(which).clamp(-0.08, 1.08);
+    let track_w = 46;
+    let track_h = 26;
+    let (x, y) = (c.x(), c.y());
+    let tx = x + c.w() - track_w;
+    let ty = y + 2;
+    let cy = ty + track_h / 2;
+    let on = p.clamp(0.0, 1.0);
+    let track = skin.track.mix(skin.accent, (1000.0 * on) as u32);
+    draw::set_draw_color(Color::from(track));
+    draw::draw_rounded_rectf(tx, ty, track_w, track_h, track_h / 2);
+    let track_border = skin.border.mix(skin.accent_pressed, (1000.0 * on) as u32);
+    draw::set_draw_color(Color::from(track_border));
+    draw::draw_rounded_rect(tx, ty, track_w - 1, track_h - 1, track_h / 2);
+
+    let title_w = (c.w() - track_w - 16).max(80);
+    draw::set_font(Font::HelveticaBold, 13);
+    draw::set_draw_color(Color::from(if c.active() {
+        skin.text
+    } else {
+        skin.dim
+    }));
+    draw::draw_text2(
+        &c.label(),
+        x,
+        ty,
+        title_w,
+        track_h,
+        Align::Left | Align::Inside,
+    );
+
+    let knob_d = 20;
+    let pad = 3;
+    let travel = (track_w - knob_d - 2 * pad) as f32;
+    let kx = tx + pad + knob_d / 2 + (travel * p) as i32;
+    let shadow = track.mix(Rgb24::hex(0x000000), 300);
+    fill_circle(kx, cy + 1, knob_d + 4, Color::from(shadow));
+    let rim = Rgb24::hex(0xffffff).mix(skin.track, 320);
+    fill_circle(kx, cy, knob_d + 2, Color::from(rim));
+    fill_circle(kx, cy, knob_d, Color::White);
+}
+
+/// Sidebar entry: a pill for the active page plus a crisp SVG line icon (house
+/// for home, gear for settings). The selected row is a softly lifted surface
+/// with an accent icon, an accent rail and a bold label.
 fn draw_nav_item(b: &mut Button, home: bool) {
     let skin = skin();
     let active = *HOME_ACTIVE.lock().unwrap() == home;
     let hover = hover_value(home);
     let hovered = hover > 0.02;
     let (x, y, w, h) = (b.x(), b.y(), b.w(), b.h());
-    let cy = y + h / 2;
     let pressed = b.value();
     let inset = if pressed { 1 } else { 0 };
     if active {
         draw::set_draw_color(Color::from(skin.pill));
         draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, 10);
+        draw::set_draw_color(Color::from(skin.accent_soft));
+        draw::draw_rounded_rectf(x + 8, y + h / 2 - 9, 3, 18, 2);
     } else if hovered {
         draw::set_draw_color(Color::from(
             skin.nav_bg.mix(skin.pill, (550.0 * hover) as u32),
@@ -1211,28 +1244,25 @@ fn draw_nav_item(b: &mut Button, home: bool) {
         draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, 10);
     }
     let icon_color = if active {
-        Color::from(skin.accent_soft)
+        skin.accent_soft
     } else {
-        Color::from(skin.dim.mix(skin.text, (1000.0 * hover) as u32))
+        // Quantise the hover fade into a few cached glyphs: smooth to the eye,
+        // but no SVG re-parse for every intermediate colour.
+        let step = (hover * 5.0).round() as u32;
+        skin.dim.mix(skin.text, step * 200)
     };
-    draw::set_draw_color(icon_color);
-    let icon_x = x + 30;
-    if home {
-        // House outline: roof, walls and a door notch.
-        draw::draw_line(icon_x - 8, cy, icon_x, cy - 8);
-        draw::draw_line(icon_x, cy - 8, icon_x + 8, cy);
-        draw::draw_line(icon_x - 6, cy - 1, icon_x - 6, cy + 8);
-        draw::draw_line(icon_x + 6, cy - 1, icon_x + 6, cy + 8);
-        draw::draw_line(icon_x - 6, cy + 8, icon_x + 6, cy + 8);
-        draw::draw_rect(icon_x - 2, cy + 3, 4, 5);
-    } else {
-        // Sliders: three tracks with moved knobs.
-        for (offset, knob) in [(-6, icon_x + 2), (0, icon_x - 3), (6, icon_x + 4)] {
-            let line_y = cy + offset;
-            draw::draw_line(icon_x - 8, line_y, icon_x + 8, line_y);
-            draw::draw_circle_fill(knob, line_y, 5, icon_color);
-        }
-    }
+    draw_glyph(
+        if home {
+            ICON_HOME_SVG
+        } else {
+            ICON_SETTINGS_SVG
+        },
+        icon_color,
+        x + 20,
+        y + (h - 22) / 2,
+        22,
+        22,
+    );
     draw::set_draw_color(Color::from(if active {
         skin.text
     } else {
@@ -1246,7 +1276,14 @@ fn draw_nav_item(b: &mut Button, home: bool) {
         },
         13,
     );
-    draw::draw_text(&b.label(), x + 52, cy + 5);
+    draw::draw_text2(
+        &b.label(),
+        x + 52,
+        y,
+        w - 64,
+        h,
+        Align::Left | Align::Inside,
+    );
 }
 
 /// Small caps eyebrow labels get the launcher's letter spacing; FLTK has no
@@ -1288,23 +1325,36 @@ fn draw_nav_island(f: &mut Frame) {
     draw::draw_rounded_rect(x, y, w - 1, h - 1, 16);
 }
 
-/// Brand tile: a rounded accent square with the initial.
+/// Brand tile: a rounded accent square carrying the proximity mark.
 fn draw_brand_mark(f: &mut Frame) {
     let skin = skin();
     let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
+    // A soft accent halo lifts the tile from the nav island.
+    draw::set_draw_color(Color::from(skin.nav_bg.mix(skin.accent, 130)));
+    draw::draw_rounded_rectf(x - 2, y - 2, w + 4, h + 4, 13);
     draw::set_draw_color(Color::from(skin.accent));
     draw::draw_rounded_rectf(x, y, w, h, 10);
-    draw::set_font(Font::HelveticaBold, 18);
-    draw::set_draw_color(Color::White);
-    draw::draw_text2(&f.label(), x, y, w, h, Align::Center);
+    // One-pixel top highlight, like the launcher's raised surfaces.
+    draw::set_draw_color(Color::from(skin.accent.mix(Rgb24::hex(0xffffff), 150)));
+    draw::draw_line(x + 9, y + 1, x + w - 9, y + 1);
+    draw::set_draw_color(Color::from(skin.accent.mix(Rgb24::hex(0x000000), 120)));
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, 10);
+    draw_glyph(
+        LOGO_GLYPH_SVG,
+        Rgb24::hex(0xffffff),
+        x + 5,
+        y + 5,
+        w - 10,
+        h - 10,
+    );
 }
 
 /// Whether the proximity server is currently accepting connections.
 static SERVER_LIVE: AtomicBool = AtomicBool::new(false);
 
 /// Motion state of the shell: hover fades, switch springs, the live pulse and
-/// the page-switch bloom. A single 60 Hz ticker advances everything and only
-/// redraws widgets whose value actually moved.
+/// the status-dot pop/ripple. A single 60 Hz ticker advances everything and
+/// only redraws widgets whose value actually moved.
 struct UiMotion {
     nav_home: f32,
     nav_settings: f32,
@@ -1314,6 +1364,9 @@ struct UiMotion {
     sw_native: Spring,
     sw_nvenc: Spring,
     sw_wayland: Spring,
+    status: Spring,
+    status_pop: f32,
+    ping: f32,
     pulse: f32,
 }
 
@@ -1340,6 +1393,9 @@ static MOTION: Mutex<UiMotion> = Mutex::new(UiMotion {
     sw_native: Spring { x: 0.0, v: 0.0 },
     sw_nvenc: Spring { x: 0.0, v: 0.0 },
     sw_wayland: Spring { x: 0.0, v: 0.0 },
+    status: Spring { x: 0.0, v: 0.0 },
+    status_pop: 0.0,
+    ping: 0.0,
     pulse: 0.0,
 });
 
@@ -1468,8 +1524,20 @@ fn ui_motion_tick() {
         }
     }
 
-    if SERVER_LIVE.load(Ordering::Relaxed) {
-        m.pulse = (m.pulse + dt * 3.0) % std::f32::consts::TAU;
+    let live = SERVER_LIVE.load(Ordering::Relaxed);
+    if spring_step(&mut m.status, if live { 1.0 } else { 0.0 }, dt) {
+        dirty.push("status_pill");
+    }
+    if m.status_pop > 0.0 {
+        m.status_pop = (m.status_pop - dt * 2.2).max(0.0);
+        dirty.push("status_pill");
+    }
+    if m.ping > 0.0 {
+        m.ping = (m.ping - dt * 1.7).max(0.0);
+        dirty.push("status_pill");
+    }
+    if live {
+        m.pulse = (m.pulse + dt * 2.4) % std::f32::consts::TAU;
         dirty.push("status_pill");
     } else if m.pulse != 0.0 {
         m.pulse = 0.0;
@@ -1502,28 +1570,83 @@ fn hover_value(home: bool) -> f32 {
     }
 }
 
-/// Status pill at the bottom of the sidebar: colored dot plus a short state.
+/// Kick the status indicator when the server changes state: the dot gets a
+/// short spring-pop and a ripple travels out from it.
+fn kick_status(live: bool) {
+    let mut motion = MOTION.lock().unwrap();
+    motion.status.v = if live { 9.0 } else { -9.0 };
+    motion.status_pop = 1.0;
+    motion.ping = 1.0;
+}
+
+/// Status pill at the bottom of the sidebar: an animated dot, a ripple on
+/// state changes and a short label. The dot is deliberately centred with the
+/// text via `draw_text2`, so it stays perfectly aligned at every state.
 fn draw_status_pill(f: &mut Frame) {
     let skin = skin();
     let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
     let live = SERVER_LIVE.load(Ordering::Relaxed);
-    draw::set_draw_color(Color::from(skin.pill));
+    let (t, pop_phase, ping, pulse) = {
+        let motion = MOTION.lock().unwrap();
+        (motion.status.x, motion.status_pop, motion.ping, motion.pulse)
+    };
+    let on = t.clamp(0.0, 1.0);
+    let pop = (pop_phase * std::f32::consts::PI).sin().max(0.0) * 0.55;
+
+    let pill = skin.pill.mix(skin.success, (40.0 * on) as u32);
+    draw::set_draw_color(Color::from(pill));
     draw::draw_rounded_rectf(x, y, w, h, h / 2);
-    if live {
-        let pulse = {
-            let m = MOTION.lock().unwrap();
-            (m.pulse.sin() + 1.0) * 0.5
-        };
-        let halo = 12 + (4.0 * pulse) as i32;
-        draw::set_draw_color(Color::from(skin.success.mix(skin.pill, 760)));
-        draw::draw_circle_fill(x + 18, y + h / 2, halo, draw::get_color());
+    draw::set_draw_color(Color::from(
+        skin.border.mix(skin.success, (120.0 * on) as u32),
+    ));
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, h / 2);
+
+    let cx = x + 17;
+    let cy = y + h / 2;
+    let bob = (pop_phase * std::f32::consts::PI).sin().max(0.0) * 2.0;
+    let dot_cy = cy - bob.round() as i32;
+    let dot_d = ((10.0 + 2.0 * on) * (1.0 + pop)).round() as i32;
+
+    // Soft halo while the server is on.
+    if on > 0.01 {
+        for (extra, mix) in [(7i32, 900u32), (14, 945)] {
+            let d = dot_d + extra;
+            let halo = skin.success.mix(skin.pill, mix);
+            draw::set_draw_color(Color::from(halo));
+            fill_circle(cx, dot_cy, d, Color::from(halo));
+        }
     }
-    let dot = if live { skin.success } else { skin.dim };
-    draw::set_draw_color(Color::from(dot));
-    draw::draw_circle_fill(x + 18, y + h / 2, 8, Color::from(dot));
-    draw::set_draw_color(Color::from(if live { skin.text } else { skin.dim }));
+
+    // One-shot ripple after a state change.
+    if ping > 0.0 {
+        let r = dot_d as f64 / 2.0 + 2.0 + (1.0 - ping) as f64 * 8.0;
+        let fade = 1000u32 - (700.0 * ping) as u32;
+        let ripple = if live { skin.success } else { skin.dim };
+        draw::set_draw_color(Color::from(ripple.mix(skin.pill, fade)));
+        draw::draw_circle(cx as f64, dot_cy as f64, r);
+    }
+
+    // Gentle live pulse.
+    if live && on > 0.35 {
+        let p = (pulse.sin() + 1.0) * 0.5;
+        let r = dot_d as f64 / 2.0 + 1.0 + p as f64 * 6.0;
+        draw::set_draw_color(Color::from(skin.success.mix(skin.pill, 820)));
+        draw::draw_circle(cx as f64, dot_cy as f64, r);
+    }
+
+    let dot = skin.dim.mix(skin.success, (1000.0 * on) as u32);
+    fill_circle(cx, dot_cy, dot_d, Color::from(dot));
+
+    draw::set_draw_color(Color::from(skin.dim.mix(skin.text, (1000.0 * on) as u32)));
     draw::set_font(Font::HelveticaBold, 12);
-    draw::draw_text(&f.label(), x + 32, y + h / 2 + 4);
+    draw::draw_text2(
+        &f.label(),
+        x + 34,
+        y,
+        w - 44,
+        h,
+        Align::Left | Align::Inside,
+    );
 }
 static WINCTX: Mutex<Option<InputAreaWindowContext>> = Mutex::new(None);
 

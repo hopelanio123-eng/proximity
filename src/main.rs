@@ -21,6 +21,7 @@ mod capturable;
 mod cerror;
 mod config;
 mod gui;
+mod gui_art;
 mod input;
 mod log;
 mod protocol;

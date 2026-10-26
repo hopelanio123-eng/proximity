@@ -1,5 +1,9 @@
 # Proximity
 
+<p align="center">
+  <img src="assets/banner.svg" alt="Proximity — control your PC from any device with a browser" width="100%">
+</p>
+
 Control your PC from any device with a web browser — touch, stylus, mouse and a
 **working on-screen keyboard** on your phone.
 
@@ -12,9 +16,10 @@ Proximity is an AGPL-3.0 fork of
 - **Redesigned desktop GUI** following the AniShell launcher design system:
   a floating island sidebar (224px rail, 44px rows, accent icon on the
   selected entry), matte graphite surfaces with hairlines, Segoe UI +
-  Consolas typography, tracked uppercase eyebrows, the 50x28 spring toggle,
-  hover fades, a pulsing live-status dot and 23 color palettes (including
-  the launcher's exact dark/light pair) with a live theme picker.
+  Consolas typography, tracked uppercase eyebrows, compact spring toggles,
+  hover fades, a pulsing live-status dot with a bounce/ripple on server state
+  changes, and 23 color palettes (including the launcher's exact dark/light
+  pair) with a live theme picker.
 - **"Toggle Keyboard"** button in the web UI: opens a small text funnel on the
   device page. Whatever you type on your phone's *soft* keyboard (including
   Unicode/Cyrillic) is injected into the host:
@@ -69,6 +74,23 @@ and the vendored FFmpeg build, but a full `cargo build` needs them.
 
 Log level can be tuned with the `PROXIMITY_LOG_LEVEL` and `PROXIMITY_LOG_JSON`
 environment variables.
+
+## Brand
+
+The app mark is [`assets/logo.svg`](assets/logo.svg); the desktop window uses
+the same artwork and the transparent [`assets/logo-glyph.svg`](assets/logo-glyph.svg)
+is tinted with the active palette in the sidebar. The README banner lives in
+[`assets/banner.svg`](assets/banner.svg); [`assets/social-preview.svg`](assets/social-preview.svg)
+is the matching 1280x640 card for GitHub's social preview.
+[`assets/logo.png`](assets/logo.png) and
+[`assets/social-preview.png`](assets/social-preview.png) are ready-to-upload
+PNG exports, and [`assets/proximity.ico`](assets/proximity.ico) is the Windows
+shortcut icon.
+
+GitHub does not take a repository icon from the source tree — the closest
+repository-level image is the social preview under **Settings → General**.
+Upload `assets/social-preview.png` there. On Linux the icon is installed to
+the hicolor theme by the `.deb` packaging.
 
 ## License
 
