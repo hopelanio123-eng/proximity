@@ -76,6 +76,8 @@ pub struct Skin {
     pub divider: Rgb24,
     pub accent: Rgb24,
     pub accent_pressed: Rgb24,
+    /// Accent used on top of surfaces (icons, focus, switch knob).
+    pub accent_soft: Rgb24,
     pub text: Rgb24,
     pub dim: Rgb24,
     pub log_text: Rgb24,
@@ -137,6 +139,7 @@ impl Skin {
             divider,
             accent: p.accent,
             accent_pressed: p.accent_pressed,
+            accent_soft: p.glow,
             text,
             dim,
             log_text,

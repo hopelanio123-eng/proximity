@@ -68,7 +68,30 @@ fn apply_palette(name: Option<&str>) {
     }
 }
 
+/// Re-point FLTK's built-in faces at the launcher's type stack: Segoe UI for
+/// the interface and Consolas for values. Windows expects a one-character
+/// variant prefix before the family (' ' plain, 'B' bold, 'I' italic,
+/// 'P' bold-italic); FLTK keeps the pointer, so the CString is leaked.
+fn install_fonts() {
+    use std::ffi::CString;
+    for (face, name) in [
+        (0, " Segoe UI"),
+        (1, "BSegoe UI"),
+        (2, "ISegoe UI"),
+        (3, "PSegoe UI"),
+        (4, " Consolas"),
+        (5, "BConsolas"),
+    ] {
+        let name = CString::new(name).unwrap().into_raw();
+        unsafe {
+            fltk_sys::fl::Fl_set_font2(face, name);
+        }
+    }
+}
+
 pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
+    install_fonts();
+
     // Rounded chrome used by the cards, fields and the log panel.
     app::set_frame_type_cb(
         field_frame(),
@@ -83,8 +106,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     // Desktop shell: a fixed navigation sidebar plus a page area holding the
     // "Главная" (home) and "Настройки" (settings) views.
-    const NAV_W: i32 = 208;
-    const WIN_W: i32 = 720;
+    const NAV_W: i32 = 224;
+    const WIN_W: i32 = 760;
     const WIN_H: i32 = 720;
     const CONTENT_W: i32 = WIN_W - NAV_W;
     const PAD: i32 = 28;
@@ -104,48 +127,65 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     // size instead of stretching the cards.
     wind.size_range(WIN_W, WIN_H, WIN_W, WIN_H);
 
+    // Ambient backdrop spans the whole window; the sidebar island and the
+    // page widgets are painted on top of it.
+    let mut app_glow = Frame::default()
+        .with_size(WIN_W, WIN_H)
+        .with_pos(0, 0)
+        .with_id("app_glow");
+    app_glow.draw(draw_page_glow);
+    app_glow.super_draw(false);
+
     // --- Sidebar with the "Главная" / "Настройки" navigation --------------
     let mut nav_bar = Group::default()
         .with_pos(0, 0)
         .with_size(NAV_W, WIN_H)
         .with_id("nav_bar");
 
+    // The rail itself: a floating island on the alternate surface.
+    let mut nav_island = Frame::default()
+        .with_size(200, WIN_H - 24)
+        .with_pos(12, 12)
+        .with_id("nav_island");
+    nav_island.draw(draw_nav_island);
+    nav_island.super_draw(false);
+
     Frame::default()
         .with_size(36, 36)
-        .with_pos(20, 20)
+        .with_pos(24, 26)
         .with_align(Align::Center | Align::Inside.bits())
         .with_label("P")
         .with_id("brand_mark");
     Frame::default()
         .with_size(130, 24)
-        .with_pos(66, 16)
+        .with_pos(70, 22)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("Proximity")
         .with_id("head_title");
     Frame::default()
         .with_size(130, 14)
-        .with_pos(67, 41)
+        .with_pos(71, 47)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label(&format!("v{}", env!("CARGO_PKG_VERSION")))
         .with_id("head_sub");
 
     Frame::default()
         .with_size(140, 16)
-        .with_pos(20, 94)
+        .with_pos(24, 96)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("МЕНЮ")
         .with_id("nav_caption");
 
     let mut nav_home_btn = Button::default()
-        .with_size(184, 42)
-        .with_pos(12, 116)
+        .with_size(184, 44)
+        .with_pos(20, 118)
         .with_label("Главная")
         .with_id("nav_home");
     nav_home_btn.draw(|b| draw_nav_item(b, true));
     nav_home_btn.super_draw(false);
     let mut nav_settings_btn = Button::default()
-        .with_size(184, 42)
-        .with_pos(12, 164)
+        .with_size(184, 44)
+        .with_pos(20, 166)
         .with_label("Настройки")
         .with_id("nav_settings");
     nav_settings_btn.draw(|b| draw_nav_item(b, false));
@@ -153,7 +193,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     let mut status_pill = Frame::default()
         .with_size(184, 34)
-        .with_pos(12, WIN_H - 62)
+        .with_pos(20, WIN_H - 62)
         .with_align(Align::Center | Align::Inside.bits())
         .with_label("Сервер выключен")
         .with_id("status_pill");
@@ -169,26 +209,11 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     nav_bar.end();
 
-    // 1px divider between the navigation sidebar and the pages.
-    Frame::default()
-        .with_size(1, WIN_H)
-        .with_pos(NAV_W - 1, 0)
-        .with_id("head_divider");
-
     // --- Home page ---------------------------------------------------------
     let mut page_home = Group::default()
         .with_pos(NAV_W, 0)
         .with_size(CONTENT_W, WIN_H)
         .with_id("page_home");
-
-    // Ambient glow backdrop, painted by the current palette (first child, so
-    // every other widget sits on top of it).
-    let mut home_glow = Frame::default()
-        .with_size(CONTENT_W, WIN_H)
-        .with_pos(0, 0)
-        .with_id("page_glow_home");
-    home_glow.draw(draw_page_glow);
-    home_glow.super_draw(false);
 
     Frame::default()
         .with_size(PAGE_W, 62)
@@ -297,13 +322,6 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_pos(NAV_W, 0)
         .with_size(CONTENT_W, WIN_H)
         .with_id("page_settings");
-
-    let mut settings_glow = Frame::default()
-        .with_size(CONTENT_W, WIN_H)
-        .with_pos(0, 0)
-        .with_id("page_glow_settings");
-    settings_glow.draw(draw_page_glow);
-    settings_glow.super_draw(false);
 
     Frame::default()
         .with_size(PAGE_W, 14)
@@ -807,15 +825,14 @@ fn apply_skin() {
     let dim = Color::from(skin.dim);
     let log_text = Color::from(skin.log_text);
 
-    // Window chrome: the whole window takes the sidebar tone so no classic
-    // grey bleeds through, then the pieces paint their own colors.
+    // Window chrome: the page background fills the frame, the sidebar island
+    // and the page widgets paint on top of the ambient backdrop.
     if let Some(mut w) = app::widget_from_id::<Window>("main_window") {
         w.set_frame(FrameType::FlatBox);
-        w.set_color(nav_bg);
+        w.set_color(bg);
     }
     if let Some(mut g) = app::widget_from_id::<Group>("nav_bar") {
-        g.set_frame(FrameType::FlatBox);
-        g.set_color(nav_bg);
+        g.set_frame(FrameType::NoBox);
     }
     for id in ["head_title", "head_sub"] {
         if let Some(mut f) = app::widget_from_id::<Frame>(id) {
@@ -851,10 +868,6 @@ fn apply_skin() {
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("status_pill") {
         f.set_label_size(12);
-    }
-    if let Some(mut f) = app::widget_from_id::<Frame>("head_divider") {
-        f.set_frame(FrameType::FlatBox);
-        f.set_color(Color::from(skin.divider));
     }
     if let Some(mut b) = app::widget_from_id::<Button>("btn_toggle") {
         b.set_label_color(Color::White);
@@ -979,16 +992,10 @@ fn apply_skin() {
             f.set_label_font(Font::HelveticaBold);
         }
     }
-    // The page groups must not paint their own box over the glow backdrop,
-    // and the backdrop frames themselves must stay transparent.
+    // The page groups must not paint their own box over the backdrop.
     for id in ["page_home", "page_settings"] {
         if let Some(mut g) = app::widget_from_id::<Group>(id) {
             g.set_frame(FrameType::NoBox);
-        }
-    }
-    for id in ["page_glow_home", "page_glow_settings"] {
-        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
-            f.set_frame(FrameType::NoBox);
         }
     }
 }
@@ -1135,29 +1142,26 @@ fn draw_switch(c: &mut CheckButton) {
     }
 }
 
-/// Sidebar entry: a pill for the active page plus a small vector icon (house
-/// for home, sliders for settings). Hovering lifts the pill so the sidebar
-/// feels alive, the active entry keeps a small accent bar.
+/// Sidebar entry: a pill for the active page plus a small line icon (house for
+/// home, sliders for settings), following the launcher rail: the selected row
+/// is a softly lifted surface with an accent icon and a bold label.
 fn draw_nav_item(b: &mut Button, home: bool) {
     let skin = skin();
     let active = *HOME_ACTIVE.lock().unwrap() == home;
     let hovered = app::belowmouse::<Button>()
         .map(|w| w.as_widget_ptr() == b.as_widget_ptr())
         .unwrap_or(false);
-    let (x, y) = (b.x(), b.y());
-    let (w, h) = (b.w(), b.h());
+    let (x, y, w, h) = (b.x(), b.y(), b.w(), b.h());
     let cy = y + h / 2;
     if active {
         draw::set_draw_color(Color::from(skin.pill));
-        draw::draw_rounded_rectf(x, y, w, h, 12);
-        draw::set_draw_color(Color::from(skin.accent));
-        draw::draw_rounded_rectf(x + 10, cy - 9, 3, 18, 2);
+        draw::draw_rounded_rectf(x, y, w, h, 10);
     } else if hovered {
-        draw::set_draw_color(Color::from(skin.nav_bg.mix(skin.pill, 450)));
-        draw::draw_rounded_rectf(x, y, w, h, 12);
+        draw::set_draw_color(Color::from(skin.nav_bg.mix(skin.pill, 550)));
+        draw::draw_rounded_rectf(x, y, w, h, 10);
     }
     let icon_color = if active {
-        Color::from(skin.accent)
+        Color::from(skin.accent_soft)
     } else if hovered {
         Color::from(skin.text)
     } else {
@@ -1166,33 +1170,48 @@ fn draw_nav_item(b: &mut Button, home: bool) {
     draw::set_draw_color(icon_color);
     let icon_x = x + 30;
     if home {
-        // House: roof triangle, body square and a door notch in the pill.
-        draw::draw_polygon(icon_x, cy - 8, icon_x - 8, cy - 1, icon_x + 8, cy - 1);
-        draw::draw_rectf(icon_x - 6, cy - 1, 12, 9);
-        draw::set_draw_color(if active {
-            Color::from(skin.pill)
-        } else if hovered {
-            Color::from(skin.nav_bg.mix(skin.pill, 450))
-        } else {
-            Color::from(skin.nav_bg)
-        });
-        draw::draw_rectf(icon_x - 2, cy + 3, 4, 5);
+        // House outline: roof, walls and a door notch.
+        draw::draw_line(icon_x - 8, cy, icon_x, cy - 8);
+        draw::draw_line(icon_x, cy - 8, icon_x + 8, cy);
+        draw::draw_line(icon_x - 6, cy - 1, icon_x - 6, cy + 8);
+        draw::draw_line(icon_x + 6, cy - 1, icon_x + 6, cy + 8);
+        draw::draw_line(icon_x - 6, cy + 8, icon_x + 6, cy + 8);
+        draw::draw_rect(icon_x - 2, cy + 3, 4, 5);
     } else {
-        // Sliders: three lines with moved knobs.
+        // Sliders: three tracks with moved knobs.
         for (offset, knob) in [(-6, icon_x + 2), (0, icon_x - 3), (6, icon_x + 4)] {
             let line_y = cy + offset;
             draw::draw_line(icon_x - 8, line_y, icon_x + 8, line_y);
-            draw::draw_circle_fill(knob, line_y, 6, icon_color);
+            draw::draw_circle_fill(knob, line_y, 5, icon_color);
         }
     }
-    let label_color = if active || hovered {
-        Color::from(skin.text)
+    draw::set_draw_color(Color::from(if active || hovered {
+        skin.text
     } else {
-        Color::from(skin.dim)
-    };
-    draw::set_draw_color(label_color);
-    draw::set_font(Font::HelveticaBold, 13);
+        skin.dim
+    }));
+    draw::set_font(
+        if active {
+            Font::HelveticaBold
+        } else {
+            Font::Helvetica
+        },
+        13,
+    );
     draw::draw_text(&b.label(), x + 52, cy + 5);
+}
+
+/// Sidebar island: the floating rail the navigation lives on.
+fn draw_nav_island(f: &mut Frame) {
+    let skin = skin();
+    let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
+    draw::set_draw_color(Color::from(skin.nav_bg));
+    draw::draw_rounded_rectf(x, y, w, h, 16);
+    // A one-pixel highlight along the top edge, like the launcher islands.
+    draw::set_draw_color(Color::from(skin.nav_bg.mix(skin.text, 60)));
+    draw::draw_line(x + 18, y + 1, x + w - 18, y + 1);
+    draw::set_draw_color(Color::from(skin.border));
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, 16);
 }
 
 /// Brand tile: a rounded accent square with the initial.

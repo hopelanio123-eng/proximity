@@ -1797,6 +1797,7 @@ dependencies = [
  "dirs",
  "fastwebsockets",
  "fltk",
+ "fltk-sys",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-video",
