@@ -9,9 +9,12 @@ Proximity is an AGPL-3.0 fork of
 ## What was added compared to upstream Weylus
 
 - New `TextEvent` protocol message (browser -> server over websocket).
-- **Redesigned desktop GUI**: a "Главная" / "Настройки" sidebar, rounded
-  cards, custom-painted buttons, fields and toggle switches, and 21 color
-  palettes ported from the anime launcher presets with a live theme picker.
+- **Redesigned desktop GUI** following the AniShell launcher design system:
+  a floating island sidebar (224px rail, 44px rows, accent icon on the
+  selected entry), matte graphite surfaces with hairlines, Segoe UI +
+  Consolas typography, tracked uppercase eyebrows, the 50x28 spring toggle,
+  hover fades, a pulsing live-status dot and 23 color palettes (including
+  the launcher's exact dark/light pair) with a live theme picker.
 - **"Toggle Keyboard"** button in the web UI: opens a small text funnel on the
   device page. Whatever you type on your phone's *soft* keyboard (including
   Unicode/Cyrillic) is injected into the host:
