@@ -54,7 +54,7 @@
     </main>
 
     <div id="settings">
-        <div id="handle" aria-hidden="true">&lsaquo;</div>
+        <button id="handle" type="button" aria-label="Свернуть панель настроек" title="Свернуть панель"></button>
 
         <header id="settings_header">
             <span class="brand_mark brand_mark_sm" aria-hidden="true">
@@ -345,6 +345,7 @@
                 var open = !hidden && !gone;
                 document.body.classList.toggle("panel_open", open);
                 document.body.classList.toggle("panel_gone", gone);
+                settings.setAttribute("aria-hidden", open ? "false" : "true");
                 fab.setAttribute("aria-expanded", open ? "true" : "false");
             }
 
@@ -356,6 +357,38 @@
                 attributeFilter: ["class"]
             });
             syncPanelState();
+
+            // Bottom sheet: the grabber collapses on tap; dragging the header
+            // down also collapses it, like a native mobile sheet.
+            var header = document.getElementById("settings_header");
+            var sheetTouch = null;
+            function phoneSheet() {
+                return window.matchMedia("(max-width: 760px)").matches;
+            }
+            header.addEventListener("touchstart", function (e) {
+                if (!phoneSheet() || settings.classList.contains("hide")) { return; }
+                if (e.target.closest("button, input, select, label, a")) { return; }
+                var t = e.touches[0];
+                sheetTouch = { x: t.clientX, y: t.clientY };
+            }, { passive: true });
+            header.addEventListener("touchmove", function (e) {
+                if (!sheetTouch) { return; }
+                var t = e.touches[0];
+                var dy = t.clientY - sheetTouch.y;
+                var dx = Math.abs(t.clientX - sheetTouch.x);
+                if (dy > 8 && dy > dx) { e.preventDefault(); }
+            }, { passive: false });
+            header.addEventListener("touchend", function (e) {
+                if (!sheetTouch) { return; }
+                var t = e.changedTouches[0];
+                var dy = t.clientY - sheetTouch.y;
+                var dx = Math.abs(t.clientX - sheetTouch.x);
+                sheetTouch = null;
+                if (dy > 60 && dy > dx * 1.2) { togglePanel(); }
+            });
+            header.addEventListener("touchcancel", function () {
+                sheetTouch = null;
+            });
 
             var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab_btn"));
             var panels = Array.prototype.slice.call(document.querySelectorAll("[data-tab-panel]"));

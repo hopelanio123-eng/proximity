@@ -1425,21 +1425,60 @@ body.panel_gone #settings_fab {
         box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.5);
     }
 
+    /* A real grabber for the bottom sheet: tap it or swipe the header down. */
+    #handle {
+        display: flex;
+        position: absolute;
+        top: 0.1rem;
+        left: 50%;
+        z-index: 8;
+        width: 5.2rem;
+        height: 1.9rem;
+        margin-left: -2.6rem;
+        padding: 0;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--text-dim);
+        align-items: center;
+        justify-content: center;
+        gap: 0.32rem;
+        cursor: pointer;
+        -webkit-appearance: none;
+        appearance: none;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    #handle::before {
+        content: "";
+        width: 2.4rem;
+        height: 0.22rem;
+        border-radius: 999px;
+        background: var(--border);
+    }
+
+    #handle::after {
+        content: "";
+        width: 0.42rem;
+        height: 0.42rem;
+        border-right: 1.6px solid currentColor;
+        border-bottom: 1.6px solid currentColor;
+        transform: translateY(-0.12rem) rotate(45deg);
+        opacity: 0.7;
+    }
+
+    #handle:active {
+        opacity: 0.6;
+    }
+
     #settings_header {
         position: relative;
-        padding-top: 1.45rem;
+        padding-top: 2.15rem;
     }
 
     #settings_header::before {
-        content: "";
-        position: absolute;
-        top: 0.55rem;
-        left: 50%;
-        width: 2.7rem;
-        height: 0.22rem;
-        margin-left: -1.35rem;
-        border-radius: 999px;
-        background: var(--border);
+        display: none;
     }
 
     #settings.hide {
