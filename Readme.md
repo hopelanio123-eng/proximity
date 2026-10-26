@@ -1,9 +1,5 @@
 # Proximity
 
-<p align="center">
-  <img src="assets/banner.svg" alt="Proximity — control your PC from any device with a browser" width="100%">
-</p>
-
 Control your PC from any device with a web browser — touch, stylus, mouse and a
 **working on-screen keyboard** on your phone.
 
@@ -72,9 +68,9 @@ environment variables.
 
 The app mark is [`assets/logo.svg`](assets/logo.svg); the desktop window uses
 the same artwork and the transparent [`assets/logo-glyph.svg`](assets/logo-glyph.svg)
-is tinted with the active palette in the sidebar. The README banner lives in
-[`assets/banner.svg`](assets/banner.svg); [`assets/social-preview.svg`](assets/social-preview.svg)
-is the matching 1280x640 card for GitHub's social preview.
+is tinted with the active palette in the sidebar.
+[`assets/social-preview.svg`](assets/social-preview.svg) is the matching
+1280x640 card for GitHub's social preview.
 [`assets/logo.png`](assets/logo.png) and
 [`assets/social-preview.png`](assets/social-preview.png) are ready-to-upload
 PNG exports, and [`assets/proximity.ico`](assets/proximity.ico) is the Windows
