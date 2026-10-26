@@ -7,19 +7,17 @@
 Control your PC from any device with a web browser — touch, stylus, mouse and a
 **working on-screen keyboard** on your phone.
 
-Proximity is an AGPL-3.0 fork of
-[Weylus](https://github.com/H-M-H/Weylus) by H-M-H with additional features.
+A personal project focused on low-latency screen streaming, touch input and
+typing from the local network.
 
-## What was added compared to upstream Weylus
+## Features
 
 - New `TextEvent` protocol message (browser -> server over websocket).
-- **Redesigned desktop GUI** following the AniShell launcher design system:
-  a floating island sidebar (224px rail, 44px rows, accent icon on the
-  selected entry), matte graphite surfaces with hairlines, Segoe UI +
-  Consolas typography, tracked uppercase eyebrows, compact spring toggles,
-  hover fades, a pulsing live-status dot with a bounce/ripple on server state
-  changes, and 23 color palettes (including the launcher's exact dark/light
-  pair) with a live theme picker.
+- **Redesigned desktop GUI**: a floating island sidebar (224px rail, 44px rows,
+  accent icon on the selected entry), matte graphite surfaces with hairlines,
+  Segoe UI + Consolas typography, tracked uppercase eyebrows, compact spring
+  toggles, hover fades, a pulsing live-status dot with a bounce/ripple on
+  server state changes, and 23 color palettes with a live theme picker.
 - **"Toggle Keyboard"** button in the web UI: opens a small text funnel on the
   device page. Whatever you type on your phone's *soft* keyboard (including
   Unicode/Cyrillic) is injected into the host:
@@ -28,8 +26,7 @@ Proximity is an AGPL-3.0 fork of
   - macOS/X11: characters are synthesized through `autopilot`.
   - Linux: uinput CTRL+SHIFT+U unicode insertion.
 - Enter/Backspace from the soft keyboard are translated to proper key events.
-- Upstream Weylus explicitly does *not* support on-screen keyboards; this fork
-  exists to fill exactly that gap.
+- The host stays on your local network — no cloud account and no relay.
 
 ## Usage
 
@@ -47,13 +44,9 @@ open in the host firewall.
 
 ## Building
 
-Requirements (same as upstream): Rust, TypeScript, bash, make, a C compiler and
-nasm; ffmpeg/x264 are built from source automatically. Alternatively configure
-with the `ffmpeg-system` feature.
-
-Easiest is the bundled GitHub Actions workflow (manual `workflow_dispatch`):
-it builds the Windows binary (mingw cross-compile), the Linux binary and a deb
-inside the official `hhmhh/weylus_build:latest` container and uploads artifacts.
+Requirements: Rust, TypeScript, bash, make, a C compiler and nasm; ffmpeg/x264
+are built from source automatically. Alternatively configure with the
+`ffmpeg-system` feature.
 
 ### Windows / MSVC (local)
 
@@ -94,5 +87,4 @@ the hicolor theme by the `.deb` packaging.
 
 ## License
 
-AGPL-3.0-or-later, unchanged from upstream — see [LICENSE](LICENSE).
-All credit for the original Weylus goes to H-M-H and contributors.
+AGPL-3.0-or-later — see [LICENSE](LICENSE).
