@@ -425,7 +425,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_pos(PAD + 18, 414)
         .with_label("Автозапуск")
         .with_id("check_auto");
-    check_auto_start.draw(draw_switch);
+    check_auto_start.draw(|c| draw_switch(c, Switch::Auto));
     check_auto_start.super_draw(false);
     check_auto_start.set_tooltip("Start Proximity server immediately on program start.");
     check_auto_start.set_checked(config.auto_start);
@@ -445,7 +445,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_id("check_wayland");
     #[cfg(target_os = "linux")]
     {
-        check_wayland.draw(draw_switch);
+        check_wayland.draw(|c| draw_switch(c, Switch::Wayland));
         check_wayland.super_draw(false);
         check_wayland.set_tooltip(
             "EXPERIMENTAL! This may crash your desktop! Enables screen \
@@ -477,7 +477,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_size(PAGE_W - 36, 48)
         .with_pos(PAD + 18, 528)
         .with_id("check_native");
-    check_native_hw_accel.draw(draw_switch);
+    check_native_hw_accel.draw(|c| draw_switch(c, Switch::Native));
     check_native_hw_accel.super_draw(false);
 
     #[cfg(target_os = "linux")]
@@ -522,7 +522,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_pos(PAD + 18, 580)
         .with_label("NVENC")
         .with_id("check_nvenc");
-    check_nvenc.draw(draw_switch);
+    check_nvenc.draw(|c| draw_switch(c, Switch::Nvenc));
     check_nvenc.super_draw(false);
     check_nvenc.set_tooltip("Try to use Nvidia's NVENC to encode the video via GPU.");
 
@@ -558,6 +558,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     // First paint with the palette from the config (or the default), then
     // show the home page.
     apply_palette(config.gui_theme.as_deref());
+    // One ticker drives every small animation in the shell.
+    app::add_timeout2(1.0 / 60.0, ui_motion_tick);
 
     let output_buf = Arc::new(Mutex::new(output_buf));
 
@@ -1108,23 +1110,20 @@ fn draw_page_glow(f: &mut Frame) {
 /// fill/hover pair and a small press contraction, all painted by hand.
 fn draw_primary_button(b: &mut Button) {
     let skin = skin();
-    let hovered = app::belowmouse::<Button>()
-        .map(|w| w.as_widget_ptr() == b.as_widget_ptr())
-        .unwrap_or(false);
+    let hover = {
+        let m = MOTION.lock().unwrap();
+        m.primary
+    };
     let (x, y, w, h) = (b.x(), b.y(), b.w(), b.h());
     let live = SERVER_LIVE.load(Ordering::Relaxed);
     let base_color = if live { skin.danger } else { skin.accent };
     let pressed = b.value();
     let base = if pressed {
         base_color.mix(Rgb24::hex(0x000000), 120)
-    } else if hovered {
-        if live {
-            skin.danger.mix(Rgb24::hex(0xffffff), 90)
-        } else {
-            skin.accent_pressed
-        }
+    } else if live {
+        skin.danger.mix(Rgb24::hex(0xffffff), (90.0 * hover) as u32)
     } else {
-        base_color
+        skin.accent.mix(skin.accent_pressed, (1000.0 * hover) as u32)
     };
     // The 0.96 press scale is painted as a smaller pill.
     let inset = if pressed { 2 } else { 0 };
@@ -1139,15 +1138,14 @@ fn draw_primary_button(b: &mut Button) {
 /// chevron; the popup itself is handled by FLTK.
 fn draw_choice(c: &mut Choice) {
     let skin = skin();
-    let hovered = app::belowmouse::<Choice>()
-        .map(|w| w.as_widget_ptr() == c.as_widget_ptr())
-        .unwrap_or(false);
+    let hover = {
+        let m = MOTION.lock().unwrap();
+        m.choice
+    };
     let (x, y, w, h) = (c.x(), c.y(), c.w(), c.h());
-    draw::set_draw_color(Color::from(if hovered {
-        skin.pill
-    } else {
-        skin.surface
-    }));
+    draw::set_draw_color(Color::from(
+        skin.surface.mix(skin.pill, (800.0 * hover) as u32),
+    ));
     draw::draw_rounded_rectf(x, y, w, h, 10);
     draw::set_draw_color(Color::from(skin.border));
     draw::draw_rounded_rect(x, y, w - 1, h - 1, 10);
@@ -1165,9 +1163,9 @@ fn draw_choice(c: &mut Choice) {
 /// Toggle switch drawn in place of the stock check box, following the
 /// launcher's SliderButton: 50x28 track, 20px knob, accent-on-surface when
 /// on and a white knob on a recessed slot when off. The row title sits left.
-fn draw_switch(c: &mut CheckButton) {
+fn draw_switch(c: &mut CheckButton, which: Switch) {
     let skin = skin();
-    let on = c.is_checked();
+    let p = switch_spring(which);
     let (x, y, h) = (c.x(), c.y(), c.h());
     let track_w = 50;
     let track_h = 28;
@@ -1175,15 +1173,13 @@ fn draw_switch(c: &mut CheckButton) {
     let ty = y + (h - track_h) / 2;
     let off_track = skin.track;
     let on_track = skin.surface.mix(skin.accent_soft, 400);
-    draw::set_draw_color(Color::from(if on { on_track } else { off_track }));
+    draw::set_draw_color(Color::from(
+        off_track.mix(on_track, (1000.0 * p) as u32),
+    ));
     draw::draw_rounded_rectf(tx, ty, track_w, track_h, track_h / 2);
     let d = 20;
-    let kx = if on { tx + track_w - d - 4 } else { tx + 4 };
-    let knob = if on {
-        skin.accent_soft
-    } else {
-        Rgb24::hex(0xffffff)
-    };
+    let kx = tx + 4 + (22.0 * p) as i32;
+    let knob = Rgb24::hex(0xffffff).mix(skin.accent_soft, (1000.0 * p) as u32);
     draw::set_draw_color(Color::from(knob));
     draw::draw_circle_fill(kx + d / 2, ty + track_h / 2, d, Color::from(knob));
     if !c.label().is_empty() {
@@ -1199,9 +1195,8 @@ fn draw_switch(c: &mut CheckButton) {
 fn draw_nav_item(b: &mut Button, home: bool) {
     let skin = skin();
     let active = *HOME_ACTIVE.lock().unwrap() == home;
-    let hovered = app::belowmouse::<Button>()
-        .map(|w| w.as_widget_ptr() == b.as_widget_ptr())
-        .unwrap_or(false);
+    let hover = hover_value(home);
+    let hovered = hover > 0.02;
     let (x, y, w, h) = (b.x(), b.y(), b.w(), b.h());
     let cy = y + h / 2;
     let pressed = b.value();
@@ -1210,15 +1205,15 @@ fn draw_nav_item(b: &mut Button, home: bool) {
         draw::set_draw_color(Color::from(skin.pill));
         draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, 10);
     } else if hovered {
-        draw::set_draw_color(Color::from(skin.nav_bg.mix(skin.pill, 550)));
+        draw::set_draw_color(Color::from(
+            skin.nav_bg.mix(skin.pill, (550.0 * hover) as u32),
+        ));
         draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, 10);
     }
     let icon_color = if active {
         Color::from(skin.accent_soft)
-    } else if hovered {
-        Color::from(skin.text)
     } else {
-        Color::from(skin.dim)
+        Color::from(skin.dim.mix(skin.text, (1000.0 * hover) as u32))
     };
     draw::set_draw_color(icon_color);
     let icon_x = x + 30;
@@ -1238,10 +1233,10 @@ fn draw_nav_item(b: &mut Button, home: bool) {
             draw::draw_circle_fill(knob, line_y, 5, icon_color);
         }
     }
-    draw::set_draw_color(Color::from(if active || hovered {
+    draw::set_draw_color(Color::from(if active {
         skin.text
     } else {
-        skin.dim
+        skin.dim.mix(skin.text, (1000.0 * hover) as u32)
     }));
     draw::set_font(
         if active {
@@ -1307,6 +1302,206 @@ fn draw_brand_mark(f: &mut Frame) {
 /// Whether the proximity server is currently accepting connections.
 static SERVER_LIVE: AtomicBool = AtomicBool::new(false);
 
+/// Motion state of the shell: hover fades, switch springs, the live pulse and
+/// the page-switch bloom. A single 60 Hz ticker advances everything and only
+/// redraws widgets whose value actually moved.
+struct UiMotion {
+    nav_home: f32,
+    nav_settings: f32,
+    primary: f32,
+    choice: f32,
+    sw_auto: Spring,
+    sw_native: Spring,
+    sw_nvenc: Spring,
+    sw_wayland: Spring,
+    pulse: f32,
+}
+
+#[derive(Clone, Copy)]
+struct Spring {
+    x: f32,
+    v: f32,
+}
+
+#[derive(Clone, Copy)]
+enum Switch {
+    Auto,
+    Native,
+    Nvenc,
+    Wayland,
+}
+
+static MOTION: Mutex<UiMotion> = Mutex::new(UiMotion {
+    nav_home: 0.0,
+    nav_settings: 0.0,
+    primary: 0.0,
+    choice: 0.0,
+    sw_auto: Spring { x: 0.0, v: 0.0 },
+    sw_native: Spring { x: 0.0, v: 0.0 },
+    sw_nvenc: Spring { x: 0.0, v: 0.0 },
+    sw_wayland: Spring { x: 0.0, v: 0.0 },
+    pulse: 0.0,
+});
+
+fn pointer_over<W>(id: &str) -> bool
+where
+    W: WidgetExt + WidgetBase + Clone + 'static,
+{
+    match (app::widget_from_id::<W>(id), app::belowmouse::<W>()) {
+        (Some(target), Some(under)) => target.as_widget_ptr() == under.as_widget_ptr(),
+        _ => false,
+    }
+}
+
+fn checked(id: &str) -> bool {
+    app::widget_from_id::<CheckButton>(id)
+        .map(|c| c.is_checked())
+        .unwrap_or(false)
+}
+
+/// Exponential approach, frame-rate independent enough at a fixed 60 Hz tick.
+fn approach(cur: &mut f32, target: f32, k: f32) -> bool {
+    let diff = target - *cur;
+    if diff.abs() <= 0.002 {
+        if *cur == target {
+            return false;
+        }
+        *cur = target;
+        return true;
+    }
+    *cur += diff * k;
+    true
+}
+
+/// Under-damped spring, the launcher's "spring-snap" (slight overshoot).
+fn spring_step(s: &mut Spring, target: f32, dt: f32) -> bool {
+    const STIFFNESS: f32 = 400.0;
+    const DAMPING: f32 = 26.0;
+    let force = STIFFNESS * (target - s.x) - DAMPING * s.v;
+    s.v += force * dt;
+    s.x += s.v * dt;
+    if (target - s.x).abs() < 0.002 && s.v.abs() < 0.02 {
+        if s.x == target && s.v == 0.0 {
+            return false;
+        }
+        s.x = target;
+        s.v = 0.0;
+        return true;
+    }
+    true
+}
+
+fn redraw_id(id: &str) {
+    if let Some(mut b) = app::widget_from_id::<Button>(id) {
+        b.redraw();
+        return;
+    }
+    if let Some(mut c) = app::widget_from_id::<Choice>(id) {
+        c.redraw();
+        return;
+    }
+    if let Some(mut c) = app::widget_from_id::<CheckButton>(id) {
+        c.redraw();
+        return;
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+        f.redraw();
+    }
+}
+
+fn ui_motion_tick() {
+    let dt = 0.016f32;
+    let hover_k = 0.24;
+    let mut dirty: Vec<&'static str> = Vec::new();
+    let mut m = MOTION.lock().unwrap();
+
+    if approach(
+        &mut m.nav_home,
+        if pointer_over::<Button>("nav_home") { 1.0 } else { 0.0 },
+        hover_k,
+    ) {
+        dirty.push("nav_home");
+    }
+    if approach(
+        &mut m.nav_settings,
+        if pointer_over::<Button>("nav_settings") { 1.0 } else { 0.0 },
+        hover_k,
+    ) {
+        dirty.push("nav_settings");
+    }
+    if approach(
+        &mut m.primary,
+        if pointer_over::<Button>("btn_toggle") { 1.0 } else { 0.0 },
+        hover_k,
+    ) {
+        dirty.push("btn_toggle");
+    }
+    if approach(
+        &mut m.choice,
+        if pointer_over::<Choice>("choice_theme") { 1.0 } else { 0.0 },
+        hover_k,
+    ) {
+        dirty.push("choice_theme");
+    }
+
+    let switches = [
+        (Switch::Auto, "check_auto"),
+        (Switch::Native, "check_native"),
+        (Switch::Nvenc, "check_nvenc"),
+        (Switch::Wayland, "check_wayland"),
+    ];
+    for (which, id) in switches {
+        let target = if checked(id) { 1.0 } else { 0.0 };
+        let spring = match which {
+            Switch::Auto => &mut m.sw_auto,
+            Switch::Native => &mut m.sw_native,
+            Switch::Nvenc => &mut m.sw_nvenc,
+            Switch::Wayland => &mut m.sw_wayland,
+        };
+        if spring_step(spring, target, dt) {
+            dirty.push(match which {
+                Switch::Auto => "check_auto",
+                Switch::Native => "check_native",
+                Switch::Nvenc => "check_nvenc",
+                Switch::Wayland => "check_wayland",
+            });
+        }
+    }
+
+    if SERVER_LIVE.load(Ordering::Relaxed) {
+        m.pulse = (m.pulse + dt * 3.0) % std::f32::consts::TAU;
+        dirty.push("status_pill");
+    } else if m.pulse != 0.0 {
+        m.pulse = 0.0;
+        dirty.push("status_pill");
+    }
+
+    drop(m);
+    for id in dirty {
+        redraw_id(id);
+    }
+    app::repeat_timeout2(1.0 / 60.0, ui_motion_tick);
+}
+
+fn switch_spring(which: Switch) -> f32 {
+    let m = MOTION.lock().unwrap();
+    match which {
+        Switch::Auto => m.sw_auto.x,
+        Switch::Native => m.sw_native.x,
+        Switch::Nvenc => m.sw_nvenc.x,
+        Switch::Wayland => m.sw_wayland.x,
+    }
+}
+
+fn hover_value(home: bool) -> f32 {
+    let m = MOTION.lock().unwrap();
+    if home {
+        m.nav_home
+    } else {
+        m.nav_settings
+    }
+}
+
 /// Status pill at the bottom of the sidebar: colored dot plus a short state.
 fn draw_status_pill(f: &mut Frame) {
     let skin = skin();
@@ -1314,6 +1509,15 @@ fn draw_status_pill(f: &mut Frame) {
     let live = SERVER_LIVE.load(Ordering::Relaxed);
     draw::set_draw_color(Color::from(skin.pill));
     draw::draw_rounded_rectf(x, y, w, h, h / 2);
+    if live {
+        let pulse = {
+            let m = MOTION.lock().unwrap();
+            (m.pulse.sin() + 1.0) * 0.5
+        };
+        let halo = 12 + (4.0 * pulse) as i32;
+        draw::set_draw_color(Color::from(skin.success.mix(skin.pill, 760)));
+        draw::draw_circle_fill(x + 18, y + h / 2, halo, draw::get_color());
+    }
     let dot = if live { skin.success } else { skin.dim };
     draw::set_draw_color(Color::from(dot));
     draw::draw_circle_fill(x + 18, y + h / 2, 8, Color::from(dot));
