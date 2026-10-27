@@ -7,7 +7,7 @@ use tracing::warn;
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
     Button, ClickButton, ClickEvent, ClickEventType, KeyboardEvent, KeyboardEventType,
-    PointerEvent, PointerEventType, PointerType, TextEdit, TextEvent, WheelEvent,
+    MouseMoveEvent, PointerEvent, PointerEventType, PointerType, TextEdit, TextEvent, WheelEvent,
 };
 
 use crate::capturable::{Capturable, Geometry};
@@ -563,6 +563,24 @@ impl InputDevice for WindowsInput {
             },
         };
         unsafe { mouse_event(flags, 0 as u32, 0 as u32, 0, 0) };
+    }
+
+    fn send_mouse_move_event(&mut self, event: &MouseMoveEvent) {
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        // A relative move has to reach the game's raw input stream, which
+        // SetCursorPos does not, so inject a relative mouse_event instead.
+        // The signed deltas are passed as the two's complement DWORD that
+        // mouse_event expects.
+        let (dx, dy) = (event.dx.round() as i32, event.dy.round() as i32);
+        if dx == 0 && dy == 0 {
+            return;
+        }
+        unsafe {
+            mouse_event(MOUSEEVENTF_MOVE, dx as DWORD, dy as DWORD, 0, 0);
+        }
     }
 
     fn send_text_event(&mut self, event: &TextEvent) {

@@ -6,7 +6,7 @@ use autopilot::screen::size as screen_size;
 use tracing::warn;
 
 use crate::input::device::{InputDevice, InputDeviceType};
-use crate::protocol::{Button, ClickButton, ClickEvent, ClickEventType, KeyboardEvent, KeyboardEventType, PointerEvent, TextEvent, WheelEvent};
+use crate::protocol::{Button, ClickButton, ClickEvent, ClickEventType, KeyboardEvent, KeyboardEventType, MouseMoveEvent, PointerEvent, TextEvent, WheelEvent};
 
 use crate::capturable::{Capturable, Geometry};
 
@@ -87,6 +87,22 @@ impl InputDevice for AutoPilotDevice {
             ClickButton::LEFT => mouse::toggle(mouse::Button::Left, down),
             ClickButton::MIDDLE => mouse::toggle(mouse::Button::Middle, down),
             ClickButton::RIGHT => mouse::toggle(mouse::Button::Right, down),
+        }
+    }
+
+    fn send_mouse_move_event(&mut self, event: &MouseMoveEvent) {
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        // autopilot has no relative movement, so warp the cursor by the
+        // delta from its current position instead.
+        let current = mouse::location();
+        if let Err(err) = mouse::move_to(autopilot::geometry::Point::new(
+            current.x + event.dx,
+            current.y + event.dy,
+        )) {
+            warn!("Could not move mouse: {}", err);
         }
     }
 

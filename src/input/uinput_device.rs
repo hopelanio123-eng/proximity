@@ -8,7 +8,8 @@ use crate::capturable::{Capturable, Geometry};
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
     Button, ClickButton, ClickEvent, ClickEventType, KeyboardEvent, KeyboardEventType,
-    KeyboardLocation, PointerEvent, PointerEventType, PointerType, Rect, TextEvent, WheelEvent,
+    KeyboardLocation, MouseMoveEvent, PointerEvent, PointerEventType, PointerType, Rect, TextEvent,
+    WheelEvent,
 };
 
 use crate::cerror::CError;
@@ -191,8 +192,8 @@ const EC_KEY_TOOL_DOUBLETAP: c_int = 0x14d;
 const EC_KEY_TOOL_TRIPLETAP: c_int = 0x14e;
 const EC_KEY_TOOL_QUADTAP: c_int = 0x14f; /* Four fingers on trackpad */
 const EC_KEY_TOOL_QUINTTAP: c_int = 0x148; /* Five fingers on trackpad */
-//const EC_RELATIVE_X: c_int = 0x00;
-//const EC_RELATIVE_Y: c_int = 0x01;
+const EC_RELATIVE_X: c_int = 0x00;
+const EC_RELATIVE_Y: c_int = 0x01;
 
 const EC_REL_HWHEEL: c_int = 0x06;
 const EC_REL_WHEEL: c_int = 0x08;
@@ -655,6 +656,26 @@ impl InputDevice for UInputDevice {
             ClickButton::MIDDLE => self.send(self.mouse_fd, ET_KEY, EC_KEY_MOUSE_MIDDLE, value),
             ClickButton::RIGHT => self.send(self.mouse_fd, ET_KEY, EC_KEY_MOUSE_RIGHT, value),
         }
+        self.send(self.mouse_fd, ET_SYNC, EC_SYNC_REPORT, 0);
+    }
+
+    fn send_mouse_move_event(&mut self, event: &MouseMoveEvent) {
+        if let Err(err) = self.capturable.before_input() {
+            warn!("Failed to activate window, sending no input ({})", err);
+            return;
+        }
+        self.send(
+            self.mouse_fd,
+            ET_RELATIVE,
+            EC_RELATIVE_X,
+            event.dx.round() as i32,
+        );
+        self.send(
+            self.mouse_fd,
+            ET_RELATIVE,
+            EC_RELATIVE_Y,
+            event.dy.round() as i32,
+        );
         self.send(self.mouse_fd, ET_SYNC, EC_SYNC_REPORT, 0);
     }
 

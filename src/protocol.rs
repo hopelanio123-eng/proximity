@@ -20,6 +20,7 @@ pub enum MessageInbound {
     TextEvent(TextEvent),
     TextEdit(TextEdit),
     ClickEvent(ClickEvent),
+    MouseMoveEvent(MouseMoveEvent),
     GetCapturableList,
     Config(ClientConfiguration),
     PauseVideo,
@@ -208,6 +209,15 @@ pub enum ClickEventType {
 pub struct ClickEvent {
     pub button: ClickButton,
     pub action: ClickEventType,
+}
+
+/// A relative mouse movement in pixels. Used by game mode on touch clients:
+/// dragging over the look area has to turn the view like a real mouse does,
+/// which an absolute PointerEvent can not express.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MouseMoveEvent {
+    pub dx: f64,
+    pub dy: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

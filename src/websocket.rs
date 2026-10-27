@@ -12,9 +12,8 @@ use tracing::{error, trace, warn};
 use crate::capturable::{get_capturables, Capturable, Recorder};
 use crate::input::device::{InputDevice, InputDeviceType};
 use crate::protocol::{
-    ClientConfiguration, ClickEvent, KeyboardEvent, MessageInbound, MessageOutbound, PointerEvent,
-    TextEdit, TextEvent,
-    ProximityReceiver, ProximitySender, WheelEvent,
+    ClientConfiguration, ClickEvent, KeyboardEvent, MessageInbound, MessageOutbound, MouseMoveEvent,
+    PointerEvent, TextEdit, TextEvent, ProximityReceiver, ProximitySender, WheelEvent,
 };
 
 use crate::cerror::CErrorCode;
@@ -117,6 +116,9 @@ impl<S, R, FnUInput> ProximityClientHandler<S, R, FnUInput> {
                         MessageInbound::TextEvent(event) => self.process_text_event(&event),
                         MessageInbound::TextEdit(event) => self.process_text_edit_event(&event),
                         MessageInbound::ClickEvent(event) => self.process_click_event(&event),
+                        MessageInbound::MouseMoveEvent(event) => {
+                            self.process_mouse_move_event(&event)
+                        }
                         MessageInbound::GetCapturableList => self.send_capturable_list(),
                         MessageInbound::Config(config) => self.update_config(config),
                         MessageInbound::PauseVideo => {
@@ -224,6 +226,17 @@ impl<S, R, FnUInput> ProximityClientHandler<S, R, FnUInput> {
                 .send_click_event(event)
         } else {
             warn!("Input device is not initalized, can not process ClickEvent!");
+        }
+    }
+
+    fn process_mouse_move_event(&mut self, event: &MouseMoveEvent) {
+        if self.input_device.is_some() {
+            self.input_device
+                .as_mut()
+                .unwrap()
+                .send_mouse_move_event(event)
+        } else {
+            warn!("Input device is not initalized, can not process MouseMoveEvent!");
         }
     }
 
