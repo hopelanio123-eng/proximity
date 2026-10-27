@@ -359,7 +359,10 @@ fn handle_video<S: ProximitySender + Clone + 'static>(
     loop {
         let now = Instant::now();
         let elapsed = now - last_frame;
-        let frames_passed = (elapsed.as_secs_f64() / frame_duration.as_secs_f64()) as u32;
+        // Cap the drop count so the u32 multiply below can not overflow, even
+        // after the connection sat paused for a very long time.
+        let frames_passed =
+            (elapsed.as_secs_f64() / frame_duration.as_secs_f64()).min(u32::MAX as f64 - 1.0) as u32;
         let next_frame = last_frame + (frames_passed + 1) * frame_duration;
         let timeout = next_frame - now;
         last_frame = next_frame;
@@ -404,9 +407,17 @@ fn handle_video<S: ProximitySender + Clone + 'static>(
                 // The Duration type can not handle infinity, if the frame rate is set to 0 we just
                 // set the duration between two frames to a very long one, which is effectively
                 // infinity.
-                let d = 1.0 / config.frame_rate;
+                // A hostile or buggy client can also send a negative rate, which would panic
+                // Duration::from_secs_f64, or an absurdly large one, which truncates to a zero
+                // frame duration and spins the capture loop with a division by zero. Treat
+                // anything below one frame per millisecond as "effectively off".
+                let d = if config.frame_rate > 0.0 {
+                    1.0 / config.frame_rate
+                } else {
+                    f64::INFINITY
+                };
                 frame_duration = if d.is_finite() {
-                    Duration::from_secs_f64(d)
+                    Duration::from_secs_f64(d.max(0.001))
                 } else {
                     EFFECTIVE_INIFINITY
                 };
