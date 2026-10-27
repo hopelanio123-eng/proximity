@@ -1337,6 +1337,7 @@ function handle_messages(
 ) {
     let mediaSource: MediaSource = null;
     let sourceBuffer: SourceBuffer = null;
+    let media_url: string = null;
     let queue = [];
     const MAX_BUFFER_LENGTH = 20;  // In seconds
     function upd_buf() {
@@ -1370,9 +1371,15 @@ function handle_messages(
             if (typeof msg == "string") {
                 if (msg == "NewVideo") {
                     let MS = window.ManagedMediaSource ? window.ManagedMediaSource : window.MediaSource;
+                    // The previous stream's blob URL is replaced here, so free
+                    // it instead of leaking one per NewVideo (resolution
+                    // changes, codec error recovery, reconnects).
+                    if (media_url)
+                        URL.revokeObjectURL(media_url);
                     mediaSource = new MS();
                     sourceBuffer = null;
-                    video.src = URL.createObjectURL(mediaSource);
+                    media_url = URL.createObjectURL(mediaSource);
+                    video.src = media_url;
                     mediaSource.addEventListener("sourceopen", (_) => {
                         let mimeType = 'video/mp4; codecs="avc1.4D403D"';
                         if (!MS.isTypeSupported(mimeType))
