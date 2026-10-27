@@ -1309,6 +1309,13 @@ body.game_mode #quickbar {
     -webkit-user-select: none;
 }
 
+/* PC audio streaming from inside the game, same state as the quickbar. */
+.game_sysbtn.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-strong);
+}
+
 /* ------------------------------------------------------ quick action bar */
 
 #quickbar {

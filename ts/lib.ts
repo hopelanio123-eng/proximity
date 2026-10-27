@@ -1152,6 +1152,58 @@ function split_graphemes(text: string): string[] {
     return Array.from(text);
 }
 
+// Shared PC-audio stream toggle. Game mode hides the quickbar, so it gets
+// its own speaker button wired to the same stream: there is exactly one
+// <audio> element no matter which button was used, and every wired button
+// mirrors the on/off state.
+let audio_element: HTMLAudioElement | null = null;
+const audio_toggle_buttons: HTMLButtonElement[] = [];
+
+function reflect_audio_buttons() {
+    const on = audio_element !== null;
+    for (const btn of audio_toggle_buttons) {
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+}
+
+function stop_audio_stream() {
+    if (audio_element) {
+        audio_element.pause();
+        audio_element.removeAttribute("src");
+        audio_element.load();
+        audio_element.remove();
+        audio_element = null;
+    }
+    reflect_audio_buttons();
+}
+
+function wire_audio_button(btn: HTMLButtonElement) {
+    btn.oncontextmenu = (e) => { e.preventDefault(); return false; };
+    btn.onclick = (e) => {
+        e.stopPropagation();
+        if (audio_element) {
+            stop_audio_stream();
+            return;
+        }
+        // Creating the element inside the click handler doubles as the
+        // user gesture required by autoplay policies; removing it again
+        // aborts the connection, which makes the server stop capturing
+        // and encoding. The query string carries the access code over.
+        audio_element = document.createElement("audio");
+        audio_element.src = "/audio_stream" + window.location.search;
+        audio_element.style.display = "none";
+        document.body.appendChild(audio_element);
+        reflect_audio_buttons();
+        audio_element.play().catch((err) => {
+            log(LogLevel.WARN, "Audio streaming failed to start: " + err);
+            stop_audio_stream();
+        });
+    };
+    audio_toggle_buttons.push(btn);
+    reflect_audio_buttons();
+}
+
 // Floating quick action buttons rendered over the video: mouse button
 // hold-to-press buttons act at the current cursor position of the host via
 // ClickEvent, key buttons send full press+release KeyboardEvents and the
@@ -1181,44 +1233,7 @@ class QuickBar {
             btn.setAttribute("aria-pressed", active ? "true" : "false");
         });
 
-        // The audio button streams the PC's sound to this device over a
-        // dedicated HTTP audio stream played by a plain <audio> element.
-        // Creating the element inside the click handler doubles as the
-        // user gesture required by autoplay policies; removing it again
-        // aborts the connection, which makes the server stop capturing
-        // and encoding.
-        const audioBtn = document.getElementById("qk_audio") as HTMLButtonElement;
-        let audioElement: HTMLAudioElement | null = null;
-        const stop_audio = () => {
-            if (audioElement) {
-                audioElement.pause();
-                audioElement.removeAttribute("src");
-                audioElement.load();
-                audioElement.remove();
-                audioElement = null;
-            }
-            audioBtn.classList.remove("active");
-            audioBtn.setAttribute("aria-pressed", "false");
-        };
-        audioBtn.oncontextmenu = (e) => { e.preventDefault(); return false; };
-        audioBtn.onclick = (e) => {
-            e.stopPropagation();
-            if (audioElement) {
-                stop_audio();
-                return;
-            }
-            // reuse the page's query string so the access code carries over
-            audioElement = document.createElement("audio");
-            audioElement.src = "/audio_stream" + window.location.search;
-            audioElement.style.display = "none";
-            document.body.appendChild(audioElement);
-            audioBtn.classList.add("active");
-            audioBtn.setAttribute("aria-pressed", "true");
-            audioElement.play().catch((err) => {
-                log(LogLevel.WARN, "Audio streaming failed to start: " + err);
-                stop_audio();
-            });
-        };
+        wire_audio_button(document.getElementById("qk_audio") as HTMLButtonElement);
     }
 }
 
@@ -1394,6 +1409,24 @@ class GameMode {
             e.stopPropagation();
             (document.getElementById("handle") as HTMLButtonElement).click();
         };
+
+        // The quickbar is hidden in game mode, so the PC audio toggle gets
+        // its own button here, left of the gear; the stream itself is shared
+        // with the quickbar button (see wire_audio_button).
+        const audioBtn = document.createElement("button");
+        audioBtn.type = "button";
+        audioBtn.className = "game_sysbtn";
+        audioBtn.title = "PC audio on/off";
+        audioBtn.setAttribute("aria-label", "Toggle PC audio");
+        audioBtn.setAttribute("aria-pressed", "false");
+        audioBtn.style.right = "calc(3.4rem + env(safe-area-inset-right))";
+        audioBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" width="1.3em" height="1.3em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<path d="M11.25 4.75v14.5l-4.75-3.75H3.75A1 1 0 0 1 2.75 14.5v-5a1 1 0 0 1 1-1h2.75l4.75-3.75z"/>' +
+            '<path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18.25 6.5a8.5 8.5 0 0 1 0 11"/></svg>';
+        this.overlay.appendChild(audioBtn);
+        audioBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+        wire_audio_button(audioBtn);
 
         // Losing the page must never leave WASD or the fire button held
         // down on the host.
