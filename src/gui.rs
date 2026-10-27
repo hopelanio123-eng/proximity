@@ -2042,7 +2042,12 @@ fn custom_input_area_window_handle_events(
                             v => warn!("Unexpected value in {name}: {v}!"),
                         }
                     }
-                    sender.send(areas).unwrap();
+                    // The client may have disconnected while the dialog was
+                    // open; ignore a dead receiver instead of panicking
+                    // inside the fltk event loop.
+                    if let Err(err) = sender.send(areas) {
+                        warn!("Failed to deliver custom input areas: {err}.");
+                    }
                     true
                 }
                 fltk::enums::Key::Escape => {
