@@ -137,22 +137,27 @@ pub struct WindowsInput {
     pointer_device_handle: *mut HSYNTHETICPOINTERDEVICE__,
     touch_device_handle: *mut HSYNTHETICPOINTERDEVICE__,
     multitouch_map: std::collections::HashMap<i64, POINTER_TYPE_INFO>,
+    // Virtual keys and mouse buttons currently held down by this client.
+    // Game mode holds WASD/fire through this device for minutes at a time;
+    // when the client vanishes without sending the release, Drop turns
+    // everything tracked here back up so the host is not stuck with a
+    // pressed fire button or walking key.
+    held_vks: std::collections::HashSet<u16>,
+    // bit 0 = left, bit 1 = right, bit 2 = middle
+    held_mouse: u8,
 }
+
+const MOUSE_HELD_LEFT: u8 = 1;
+const MOUSE_HELD_RIGHT: u8 = 2;
+const MOUSE_HELD_MIDDLE: u8 = 4;
 
 impl WindowsInput {
     /// One full press and release of a virtual key, honoring the extended-key
     /// flag (port of remote_control's key_press).
     fn key_press(&mut self, key: &str) {
         let Some(vk) = string_to_vk(key) else { return };
-        unsafe {
-            let scan = MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) as u8;
-            let mut flags: DWORD = 0;
-            if extended_key(vk) {
-                flags |= KEYEVENTF_EXTENDEDKEY;
-            }
-            keybd_event(vk as u8, scan, flags, 0);
-            keybd_event(vk as u8, scan, flags | KEYEVENTF_KEYUP, 0);
-        }
+        self.vk_event(vk, true);
+        self.vk_event(vk, false);
     }
 
     /// Inject unicode text using one SendInput call with down/up pairs
@@ -249,8 +254,18 @@ impl WindowsInput {
     }
 
     /// Sends the down or up half of one virtual key, honoring the
-    /// extended-key flag.
+    /// extended-key flag. Only transitions are injected: a down for an
+    /// already held key and an up for a key nobody pressed are ignored, so
+    /// the release of one key can not drop a modifier another button (the
+    /// game mode WALK button) is still holding.
     fn vk_event(&mut self, vk: u16, down: bool) {
+        if down {
+            if !self.held_vks.insert(vk) {
+                return;
+            }
+        } else if !self.held_vks.remove(&vk) {
+            return;
+        }
         unsafe {
             let scan = MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) as u8;
             let mut flags: DWORD = 0;
@@ -312,6 +327,8 @@ impl WindowsInput {
                 pointer_device_handle: CreateSyntheticPointerDevice(PT_PEN, 1, 1),
                 touch_device_handle: CreateSyntheticPointerDevice(PT_TOUCH, 5, 1),
                 multitouch_map: std::collections::HashMap::new(),
+                held_vks: std::collections::HashSet::new(),
+                held_mouse: 0,
             }
         }
     }
@@ -493,32 +510,54 @@ impl InputDevice for WindowsInput {
                     PointerEventType::DOWN => match event.buttons {
                         Button::PRIMARY => {
                             dw_flags |= MOUSEEVENTF_LEFTDOWN;
+                            self.held_mouse |= MOUSE_HELD_LEFT;
                         }
                         Button::SECONDARY => {
                             dw_flags |= MOUSEEVENTF_RIGHTDOWN;
+                            self.held_mouse |= MOUSE_HELD_RIGHT;
                         }
                         Button::AUXILARY => {
                             dw_flags |= MOUSEEVENTF_MIDDLEDOWN;
+                            self.held_mouse |= MOUSE_HELD_MIDDLE;
                         }
                         _ => {}
                     },
                     PointerEventType::MOVE | PointerEventType::OVER | PointerEventType::ENTER => {
                         unsafe { SetCursorPos(screen_x, screen_y) };
                     }
-                    PointerEventType::UP => match event.button {
-                        Button::PRIMARY => {
+                    PointerEventType::UP => {
+                        self.held_mouse &= match event.button {
+                            Button::PRIMARY => !MOUSE_HELD_LEFT,
+                            Button::SECONDARY => !MOUSE_HELD_RIGHT,
+                            Button::AUXILARY => !MOUSE_HELD_MIDDLE,
+                            _ => u8::MAX,
+                        };
+                        match event.button {
+                            Button::PRIMARY => {
+                                dw_flags |= MOUSEEVENTF_LEFTUP;
+                            }
+                            Button::SECONDARY => {
+                                dw_flags |= MOUSEEVENTF_RIGHTUP;
+                            }
+                            Button::AUXILARY => {
+                                dw_flags |= MOUSEEVENTF_MIDDLEUP;
+                            }
+                            _ => {}
+                        }
+                    }
+                    PointerEventType::CANCEL | PointerEventType::LEAVE | PointerEventType::OUT => {
+                        // The client can not tell which button it dropped;
+                        // release every one it might still be holding.
+                        if self.held_mouse & MOUSE_HELD_LEFT != 0 {
                             dw_flags |= MOUSEEVENTF_LEFTUP;
                         }
-                        Button::SECONDARY => {
+                        if self.held_mouse & MOUSE_HELD_RIGHT != 0 {
                             dw_flags |= MOUSEEVENTF_RIGHTUP;
                         }
-                        Button::AUXILARY => {
+                        if self.held_mouse & MOUSE_HELD_MIDDLE != 0 {
                             dw_flags |= MOUSEEVENTF_MIDDLEUP;
                         }
-                        _ => {}
-                    },
-                    PointerEventType::CANCEL | PointerEventType::LEAVE | PointerEventType::OUT => {
-                        dw_flags |= MOUSEEVENTF_LEFTUP;
+                        self.held_mouse = 0;
                     }
                 }
                 unsafe { mouse_event(dw_flags, 0 as u32, 0 as u32, 0, 0) };
@@ -550,16 +589,34 @@ impl InputDevice for WindowsInput {
         // current position.
         let flags = match event.button {
             ClickButton::LEFT => match event.action {
-                ClickEventType::DOWN => MOUSEEVENTF_LEFTDOWN,
-                _ => MOUSEEVENTF_LEFTUP,
+                ClickEventType::DOWN => {
+                    self.held_mouse |= MOUSE_HELD_LEFT;
+                    MOUSEEVENTF_LEFTDOWN
+                }
+                _ => {
+                    self.held_mouse &= !MOUSE_HELD_LEFT;
+                    MOUSEEVENTF_LEFTUP
+                }
             },
             ClickButton::MIDDLE => match event.action {
-                ClickEventType::DOWN => MOUSEEVENTF_MIDDLEDOWN,
-                _ => MOUSEEVENTF_MIDDLEUP,
+                ClickEventType::DOWN => {
+                    self.held_mouse |= MOUSE_HELD_MIDDLE;
+                    MOUSEEVENTF_MIDDLEDOWN
+                }
+                _ => {
+                    self.held_mouse &= !MOUSE_HELD_MIDDLE;
+                    MOUSEEVENTF_MIDDLEUP
+                }
             },
             ClickButton::RIGHT => match event.action {
-                ClickEventType::DOWN => MOUSEEVENTF_RIGHTDOWN,
-                _ => MOUSEEVENTF_RIGHTUP,
+                ClickEventType::DOWN => {
+                    self.held_mouse |= MOUSE_HELD_RIGHT;
+                    MOUSEEVENTF_RIGHTDOWN
+                }
+                _ => {
+                    self.held_mouse &= !MOUSE_HELD_RIGHT;
+                    MOUSEEVENTF_RIGHTUP
+                }
             },
         };
         unsafe { mouse_event(flags, 0 as u32, 0 as u32, 0, 0) };
@@ -619,5 +676,43 @@ impl InputDevice for WindowsInput {
 
     fn device_type(&self) -> InputDeviceType {
         InputDeviceType::WindowsInput
+    }
+}
+
+impl Drop for WindowsInput {
+    fn drop(&mut self) {
+        // The client can disappear mid-game without releasing anything
+        // (dropped connection while the fire button or W was held). Turn
+        // every tracked key and mouse button back up so the host is not
+        // stuck with pressed input.
+        let vks: Vec<u16> = self.held_vks.drain().collect();
+        let mouse = self.held_mouse;
+        if vks.is_empty() && mouse == 0 {
+            return;
+        }
+        warn!(
+            "Releasing {} held key(s) and mouse bits {:#04b} of a gone client",
+            vks.len(),
+            mouse
+        );
+        unsafe {
+            for vk in vks {
+                let scan = MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) as u8;
+                let mut flags: DWORD = KEYEVENTF_KEYUP;
+                if extended_key(vk) {
+                    flags |= KEYEVENTF_EXTENDEDKEY;
+                }
+                keybd_event(vk as u8, scan, flags, 0);
+            }
+            if mouse & MOUSE_HELD_LEFT != 0 {
+                mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+            }
+            if mouse & MOUSE_HELD_RIGHT != 0 {
+                mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0);
+            }
+            if mouse & MOUSE_HELD_MIDDLE != 0 {
+                mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, 0);
+            }
+        }
     }
 }
