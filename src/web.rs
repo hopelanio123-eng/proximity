@@ -196,7 +196,18 @@ async fn serve(
                     .unwrap());
             }
 
-            let (response, fut) = upgrade::upgrade(&mut req).unwrap();
+            // A plain GET without websocket upgrade headers must not panic
+            // the connection task; answer with 400 instead.
+            let (response, fut) = match upgrade::upgrade(&mut req) {
+                Ok(upgrade) => upgrade,
+                Err(err) => {
+                    warn!("Not a websocket upgrade request: {err}.");
+                    return Ok(Response::builder()
+                        .status(StatusCode::BAD_REQUEST)
+                        .body("expected a websocket upgrade".to_string().boxed())
+                        .unwrap());
+                }
+            };
             num_clients.fetch_add(1, Ordering::Relaxed);
 
             let config = context.proximity_client_config.clone();
