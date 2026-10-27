@@ -141,6 +141,7 @@ class Settings {
         this.game_sensitivity_input.oninput = () => {
             this.game_sensitivity_output.value = Number(this.game_sensitivity_input.value).toFixed(2);
         }
+        this.game_sensitivity_input.onchange = () => this.save_settings();
         this.client_name_input = document.getElementById("client_name") as HTMLInputElement;
         this.frame_rate_input.oninput = () => {
             this.frame_rate_output.value = Math.round(frame_rate_scale(this.frame_rate_input.valueAsNumber)).toString();
@@ -426,6 +427,9 @@ let settings: Settings;
 let debug_overlay: HTMLElement;
 let stage_overlay: StageOverlay;
 let last_pointer_data: Object;
+// Set once the first ConfigOk arrived; handle_disconnect clears the game
+// controls of a dying session even if the page never got hidden.
+let game_mode: GameMode | null = null;
 
 class PEvent {
     event_type: string;
@@ -1501,6 +1505,13 @@ class GameMode {
         this.sync_stick_keys(wanted);
     }
 
+    // All game mode traffic funnels through here: a dying websocket must
+    // not throw while release_all is telling the host to let go.
+    safe_send(payload: string) {
+        if (this.webSocket.readyState === WebSocket.OPEN)
+            this.webSocket.send(payload);
+    }
+
     look_step(e: PointerEvent) {
         const sens = settings.game_sensitivity_input.valueAsNumber || 1;
         const dx = e.clientX - this.look_last_x;
@@ -1515,7 +1526,7 @@ class GameMode {
             return;
         this.look_rest_x -= send_x;
         this.look_rest_y -= send_y;
-        this.webSocket.send(JSON.stringify({ "MouseMoveEvent": { dx: send_x, dy: send_y } }));
+        this.safe_send(JSON.stringify({ "MouseMoveEvent": { dx: send_x, dy: send_y } }));
     }
 
     send_key(code: string, down: boolean) {
@@ -1529,11 +1540,11 @@ class GameMode {
             shift: false,
             meta: false,
         };
-        this.webSocket.send(JSON.stringify({ "KeyboardEvent": key }));
+        this.safe_send(JSON.stringify({ "KeyboardEvent": key }));
     }
 
     send_click(button: "left" | "middle" | "right", down: boolean) {
-        this.webSocket.send(JSON.stringify(
+        this.safe_send(JSON.stringify(
             { "ClickEvent": { "button": button, "action": down ? "down" : "up" } }
         ));
     }
@@ -1842,6 +1853,11 @@ function init() {
     }
 
     let handle_disconnect = (msg: string) => {
+        // The game overlay may be holding WASD/fire on the host; the
+        // release must not depend on the page being hidden.
+        if (game_mode) {
+            game_mode.release_all();
+        }
         stage_overlay.on_socket_error(msg);
     }
     webSocket.onerror = () => handle_disconnect("Lost connection.");
@@ -1864,14 +1880,24 @@ function init() {
             new PointerHandler(webSocket);
             new SoftKeyboard(webSocket);
             new QuickBar(webSocket);
-            new GameMode(webSocket);
+            game_mode = new GameMode(webSocket);
             is_connected = true;
         }
     },
         (err) => alert(err),
         (window_names) => settings.onCapturableList(window_names)
     );
-    window.onunload = () => { webSocket.close(); }
+    // Mobile browsers skip unload; pagehide is the event that reliably fires
+    // when a phone tab is discarded mid-game. Release the game controls
+    // before the socket goes away either way.
+    const release_on_exit = () => {
+        if (game_mode) {
+            game_mode.release_all();
+        }
+        webSocket.close();
+    };
+    window.onunload = release_on_exit;
+    window.addEventListener("pagehide", release_on_exit);
     webSocket.onopen = function(event) {
         stage_overlay.on_socket_open();
         webSocket.send('"GetCapturableList"');
