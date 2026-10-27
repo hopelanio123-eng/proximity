@@ -42,7 +42,9 @@ impl AudioEncoder {
             init_audio_sink(encoder.handle, sample_rate_in as c_int, channels_in as c_int, &mut err)
         };
         if err.is_err() {
-            unsafe { destroy_audio_encoder(encoder.handle) };
+            // Don't destroy the encoder here: Drop below calls
+            // destroy_audio_encoder exactly once, and calling it twice frees
+            // the C context twice.
             return Err(err);
         }
         encoder.frame_size = unsafe { get_audio_frame_size(encoder.handle) } as usize;
