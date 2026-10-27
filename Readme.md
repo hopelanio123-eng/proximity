@@ -22,6 +22,12 @@ typing from the local network.
   - macOS/X11: characters are synthesized through `autopilot`.
   - Linux: uinput CTRL+SHIFT+U unicode insertion.
 - Enter/Backspace from the soft keyboard are translated to proper key events.
+- **Game mode** (web UI, Input tab): a Standoff-style touch layer for shooters.
+  Dragging the screen turns the view like a real mouse (relative
+  `MouseMoveEvent` → raw input on Windows), a joystick walks with held WASD
+  and round buttons hold fire/aim (mouse buttons), jump/crouch/walk, reload,
+  weapon slots, Tab/B/Esc. Sensitivity is adjustable and every held control
+  is released when the page hides, the connection drops or the client quits.
 - The host stays on your local network — no cloud account and no relay.
 
 ## Usage
