@@ -201,7 +201,10 @@ input[type="text"] {
 #stage_overlay {
     position: absolute;
     inset: 0;
-    z-index: 3;
+    /* Above the game mode overlay (z 40) so the retry button stays
+       tappable when the connection dies mid-game; the card itself is
+       click-through except for that button. */
+    z-index: 45;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1191,6 +1194,119 @@ label input:disabled + span {
 
 #debug_overlay span.updated {
     color: var(--success);
+}
+
+/* ----------------------------------------------------------- game mode */
+
+#game_overlay {
+    position: fixed;
+    inset: 0;
+    /* Over the stage (video/canvas), under quickbar/softkb/settings so
+       those keep working on top of the controls. */
+    z-index: 40;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+#game_overlay.hide {
+    display: none;
+}
+
+/* The quickbar would sit right under the thumbs and open menus mid-fight;
+   game mode has its own gear button instead. */
+body.game_mode #quickbar {
+    display: none;
+}
+
+#game_stick_base {
+    position: absolute;
+    left: 16%;
+    top: 76%;
+    width: clamp(6rem, 17vmin, 8.25rem);
+    aspect-ratio: 1;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 1px solid var(--glass-border);
+    background: var(--glass);
+    box-shadow: var(--shadow-soft);
+    touch-action: none;
+}
+
+/* Centered via margins so the joystick code can use transform purely as
+   the knob offset. */
+#game_stick {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 46%;
+    aspect-ratio: 1;
+    margin: -23% 0 0 -23%;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    pointer-events: none;
+    will-change: transform;
+}
+
+.game_btn {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--glass-border);
+    background: var(--glass);
+    color: var(--text);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.game_btn.sm {
+    width: var(--tap);
+    height: var(--tap);
+}
+
+.game_btn.md {
+    width: 3.75rem;
+    height: 3.75rem;
+}
+
+.game_btn.lg {
+    width: 4.9rem;
+    height: 4.9rem;
+}
+
+.game_btn.pressed {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-strong);
+}
+
+.game_sysbtn {
+    position: absolute;
+    top: calc(0.6rem + env(safe-area-inset-top));
+    right: calc(0.6rem + env(safe-area-inset-right));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 50%;
+    border: 1px solid var(--glass-border);
+    background: var(--glass);
+    color: var(--text-dim);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 /* ------------------------------------------------------ quick action bar */

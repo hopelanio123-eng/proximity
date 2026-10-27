@@ -53,6 +53,22 @@
         </div>
     </main>
 
+    <!-- Game mode: touch controls over the video. The overlay background is
+         the look surface (drag = relative mouse movement), the joystick and
+         the action buttons are populated by lib.js (GameMode). -->
+    <div id="game_overlay" class="hide">
+        <button id="game_settings" class="game_sysbtn" type="button" title="Settings" aria-label="Open settings">
+            <svg viewBox="0 0 24 24" width="1.3em" height="1.3em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+                <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+                <circle cx="15" cy="7" r="2" />
+                <circle cx="9" cy="17" r="2" />
+            </svg>
+        </button>
+        <div id="game_stick_base">
+            <div id="game_stick"></div>
+        </div>
+    </div>
+
     <div id="settings">
         <button id="handle" type="button" aria-label="Свернуть панель настроек" title="Свернуть панель"></button>
 
@@ -203,6 +219,26 @@
                         <input type="checkbox" id="enable_custom_input_areas" />
                         <span>Enable custom input area <em>map just a part of the screen</em></span>
                     </label>
+                </section>
+
+                <h3>
+                    <span class="sec_icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2.5" y="7.5" width="19" height="9.5" rx="4.75" />
+                            <path d="M7.25 10.5v3.5M5.5 12.25h3.5" />
+                            <circle cx="15.4" cy="11.1" r="0.95" fill="currentColor" stroke="none" />
+                            <circle cx="17.9" cy="13.6" r="0.95" fill="currentColor" stroke="none" />
+                        </svg>
+                    </span>
+                    Game mode
+                </h3>
+                <section>
+                    <label class="toggle"><input type="checkbox" id="game_mode" /> <span>Game mode <em>joystick, look area and action buttons</em></span></label>
+                    <label class="slider">
+                        <span>Look sensitivity</span>
+                        <input type="range" id="game_sensitivity" min="0.2" max="3" step="0.05" value="1" /><output>1.00</output>
+                    </label>
+                    <span class="hint">Drag anywhere to aim, joystick walks (WASD), buttons press mouse buttons or keys on the PC. Works best in fullscreen landscape.</span>
                 </section>
             </div>
 

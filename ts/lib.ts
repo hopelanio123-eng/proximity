@@ -116,6 +116,8 @@ class Settings {
     scale_video_input: HTMLInputElement;
     scale_video_output: HTMLOutputElement;
     range_min_pressure: HTMLInputElement;
+    game_sensitivity_input: HTMLInputElement;
+    game_sensitivity_output: HTMLOutputElement;
     check_aggressive_seek: HTMLInputElement;
     client_name_input: HTMLInputElement;
     visible: boolean;
@@ -133,6 +135,12 @@ class Settings {
         this.scale_video_input = document.getElementById("scale_video") as HTMLInputElement;
         this.scale_video_output = this.scale_video_input.nextElementSibling as HTMLOutputElement;
         this.range_min_pressure = document.getElementById("min_pressure") as HTMLInputElement;
+        this.game_sensitivity_input = document.getElementById("game_sensitivity") as HTMLInputElement;
+        this.game_sensitivity_output = this.game_sensitivity_input.nextElementSibling as HTMLOutputElement;
+        this.game_sensitivity_output.value = Number(this.game_sensitivity_input.value).toFixed(2);
+        this.game_sensitivity_input.oninput = () => {
+            this.game_sensitivity_output.value = Number(this.game_sensitivity_input.value).toFixed(2);
+        }
         this.client_name_input = document.getElementById("client_name") as HTMLInputElement;
         this.frame_rate_input.oninput = () => {
             this.frame_rate_output.value = Math.round(frame_rate_scale(this.frame_rate_input.valueAsNumber)).toString();
@@ -270,6 +278,7 @@ class Settings {
         settings["frame_rate"] = frame_rate_scale(this.frame_rate_input.valueAsNumber).toString();
         settings["scale_video"] = this.scale_video_input.value;
         settings["min_pressure"] = this.range_min_pressure.value;
+        settings["game_sensitivity"] = this.game_sensitivity_input.value;
         settings["custom_input_areas"] = this.custom_input_areas;
         settings["client_name"] = this.client_name_input.value;
         localStorage.setItem("settings", JSON.stringify(settings));
@@ -306,6 +315,11 @@ class Settings {
             let min_pressure = settings["min_pressure"];
             if (min_pressure)
                 this.range_min_pressure.value = min_pressure;
+
+            let game_sensitivity = settings["game_sensitivity"];
+            if (game_sensitivity)
+                this.game_sensitivity_input.value = game_sensitivity;
+            this.game_sensitivity_output.value = Number(this.game_sensitivity_input.value).toFixed(2);
 
             this.custom_input_areas = settings["custom_input_areas"];
 
@@ -1204,6 +1218,327 @@ class QuickBar {
     }
 }
 
+// Game mode: a Standoff-style control layer over the video. The overlay
+// background is the look surface - dragging it sends relative MouseMoveEvents
+// so the host view turns like with a real mouse. The joystick translates its
+// stick vector into held WASD KeyboardEvents and the action buttons inject
+// mouse buttons (ClickEvent) or keys (KeyboardEvent); every press is paired
+// with a release so buttons can be held like real keys.
+interface GameButtonSpec {
+    id: string;
+    label: string;
+    // Exactly one of these is set: the mouse button or the KeyboardEvent
+    // code the button holds down while it is touched.
+    mouse?: "left" | "middle" | "right";
+    key?: string;
+    // Button center in percent of the viewport.
+    x: number;
+    y: number;
+    size: "sm" | "md" | "lg";
+}
+
+// Default CS2 layout: the right thumb aims and fires, the left thumb walks,
+// utilities sit along the edges and weapon slots run along the bottom.
+const GAME_BUTTONS: GameButtonSpec[] = [
+    // right cluster
+    { id: "gb_fire", label: "FIRE", mouse: "left", x: 84, y: 70, size: "lg" },
+    { id: "gb_aim", label: "AIM", mouse: "right", x: 70, y: 57, size: "md" },
+    { id: "gb_jump", label: "JUMP", key: "Space", x: 88, y: 50, size: "md" },
+    { id: "gb_crouch", label: "CRCH", key: "ControlLeft", x: 70, y: 84, size: "md" },
+    // left cluster
+    { id: "gb_walk", label: "WALK", key: "ShiftLeft", x: 13, y: 48, size: "sm" },
+    { id: "gb_reload", label: "R", key: "KeyR", x: 26, y: 40, size: "sm" },
+    { id: "gb_use", label: "E", key: "KeyE", x: 10, y: 28, size: "sm" },
+    { id: "gb_drop", label: "G", key: "KeyG", x: 21, y: 20, size: "sm" },
+    // weapon slots along the bottom center
+    { id: "gb_slot1", label: "1", key: "Digit1", x: 44, y: 90, size: "sm" },
+    { id: "gb_slot2", label: "2", key: "Digit2", x: 50, y: 90, size: "sm" },
+    { id: "gb_slot3", label: "3", key: "Digit3", x: 56, y: 90, size: "sm" },
+    { id: "gb_slot4", label: "4", key: "Digit4", x: 62, y: 90, size: "sm" },
+    { id: "gb_lastw", label: "Q", key: "KeyQ", x: 68, y: 90, size: "sm" },
+    // top row: scoreboard, buy menu and the game menu
+    { id: "gb_score", label: "TAB", key: "Tab", x: 7, y: 8, size: "sm" },
+    { id: "gb_buy", label: "B", key: "KeyB", x: 14, y: 8, size: "sm" },
+    { id: "gb_esc", label: "ESC", key: "Escape", x: 21, y: 8, size: "sm" },
+];
+
+class GameMode {
+    webSocket: WebSocket;
+    overlay: HTMLElement;
+    stick_base: HTMLElement;
+    stick_knob: HTMLElement;
+    enabled: boolean = false;
+
+    // one pointer drags the look surface at a time
+    look_pointer: number | null = null;
+    look_last_x: number = 0;
+    look_last_y: number = 0;
+    // fractional pixels not sent yet, so the many small deltas of a fast
+    // swipe are not lost to rounding
+    look_rest_x: number = 0;
+    look_rest_y: number = 0;
+
+    stick_pointer: number | null = null;
+    stick_center_x: number = 0;
+    stick_center_y: number = 0;
+    // WASD currently held by the joystick
+    stick_keys: Set<string> = new Set();
+    // keys and mouse buttons currently held by action buttons
+    held_keys: Set<string> = new Set();
+    held_mouse: Set<"left" | "middle" | "right"> = new Set();
+    wake_lock: any = null;
+
+    constructor(webSocket: WebSocket) {
+        this.webSocket = webSocket;
+        this.overlay = document.getElementById("game_overlay") as HTMLElement;
+        this.stick_base = document.getElementById("game_stick_base") as HTMLElement;
+        this.stick_knob = document.getElementById("game_stick") as HTMLElement;
+
+        for (const spec of GAME_BUTTONS) {
+            const btn = document.createElement("div");
+            btn.id = spec.id;
+            btn.classList.add("game_btn", spec.size);
+            btn.textContent = spec.label;
+            btn.style.left = spec.x + "%";
+            btn.style.top = spec.y + "%";
+            btn.addEventListener("pointerdown", (e) => {
+                e.stopPropagation();
+                btn.setPointerCapture(e.pointerId);
+                btn.classList.add("pressed");
+                if (spec.mouse) {
+                    this.held_mouse.add(spec.mouse);
+                    this.send_click(spec.mouse, true);
+                    if (spec.mouse == "left" && navigator.vibrate)
+                        navigator.vibrate(12);
+                } else if (spec.key) {
+                    this.held_keys.add(spec.key);
+                    this.send_key(spec.key, true);
+                }
+            });
+            const release = (e: PointerEvent) => {
+                if (spec.mouse) {
+                    if (this.held_mouse.delete(spec.mouse))
+                        this.send_click(spec.mouse, false);
+                } else if (spec.key) {
+                    if (this.held_keys.delete(spec.key))
+                        this.send_key(spec.key, false);
+                }
+                btn.classList.remove("pressed");
+            };
+            btn.addEventListener("pointerup", release);
+            btn.addEventListener("pointercancel", release);
+            this.overlay.appendChild(btn);
+        }
+
+        // The joystick owns its pointer: with capture the finger may slide
+        // outside the base and keeps steering until it is lifted.
+        this.stick_base.addEventListener("pointerdown", (e) => {
+            e.stopPropagation();
+            if (this.stick_pointer !== null)
+                return;
+            const rect = this.stick_base.getBoundingClientRect();
+            this.stick_center_x = rect.left + rect.width / 2;
+            this.stick_center_y = rect.top + rect.height / 2;
+            this.stick_pointer = e.pointerId;
+            this.stick_base.setPointerCapture(e.pointerId);
+            this.stick_move(e);
+        });
+        this.stick_base.addEventListener("pointermove", (e) => {
+            if (e.pointerId === this.stick_pointer)
+                this.stick_move(e);
+        });
+        const stick_end = (e: PointerEvent) => {
+            if (e.pointerId !== this.stick_pointer)
+                return;
+            this.stick_pointer = null;
+            this.stick_knob.style.transform = "translate(0px, 0px)";
+            this.sync_stick_keys(new Set());
+        };
+        this.stick_base.addEventListener("pointerup", stick_end);
+        this.stick_base.addEventListener("pointercancel", stick_end);
+
+        // Any pointer starting on the overlay itself (controls stop
+        // propagation) is a look gesture.
+        this.overlay.addEventListener("pointerdown", (e) => {
+            if (e.target !== this.overlay || this.look_pointer !== null)
+                return;
+            this.look_pointer = e.pointerId;
+            this.look_last_x = e.clientX;
+            this.look_last_y = e.clientY;
+            this.look_rest_x = 0;
+            this.look_rest_y = 0;
+            this.overlay.setPointerCapture(e.pointerId);
+        });
+        this.overlay.addEventListener("pointermove", (e) => {
+            if (e.pointerId !== this.look_pointer)
+                return;
+            const events = typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : [e];
+            for (const ev of events)
+                this.look_step(ev);
+        });
+        const look_end = (e: PointerEvent) => {
+            if (e.pointerId === this.look_pointer)
+                this.look_pointer = null;
+        };
+        this.overlay.addEventListener("pointerup", look_end);
+        this.overlay.addEventListener("pointercancel", look_end);
+        this.overlay.addEventListener("contextmenu", (e) => e.preventDefault());
+
+        // The gear reuses the settings sheet toggle wired to the grabber
+        // handle, keeping all open/close bookkeeping in one place.
+        document.getElementById("game_settings").onclick = (e) => {
+            e.stopPropagation();
+            (document.getElementById("handle") as HTMLButtonElement).click();
+        };
+
+        // Losing the page must never leave WASD or the fire button held
+        // down on the host.
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                this.release_all();
+            } else if (this.enabled) {
+                this.request_wake_lock();
+            }
+        });
+
+        const check = settings.checks.get("game_mode");
+        check.onchange = (e) => {
+            const enabled = (e.target as HTMLInputElement).checked;
+            this.set_enabled(enabled);
+            settings.save_settings();
+            // The checkbox change doubles as the user gesture the fullscreen
+            // API requires; landscape is the intended playing shape.
+            if (enabled && !document.fullscreenElement && document.body.requestFullscreen) {
+                document.body.requestFullscreen({ navigationUI: "hide" }).catch(() => { });
+            }
+        };
+        // The checkbox was already restored from localStorage when settings
+        // loaded, before this constructor ran: reapply the state.
+        if (check.checked)
+            this.set_enabled(true);
+    }
+
+    set_enabled(enabled: boolean) {
+        this.enabled = enabled;
+        this.release_all();
+        this.overlay.classList.toggle("hide", !enabled);
+        document.body.classList.toggle("game_mode", enabled);
+        if (enabled) {
+            this.request_wake_lock();
+        } else if (this.wake_lock) {
+            this.wake_lock.release();
+            this.wake_lock = null;
+        }
+    }
+
+    async request_wake_lock() {
+        try {
+            this.wake_lock = await (navigator as any).wakeLock.request("screen");
+        } catch {
+            // Denied or unsupported: the screen just sleeps as usual.
+        }
+    }
+
+    // Release every control state: on game mode changes and whenever the
+    // page hides, so the host never keeps a stuck key or mouse button.
+    release_all() {
+        this.sync_stick_keys(new Set());
+        for (const mouse of [...this.held_mouse])
+            this.send_click(mouse, false);
+        this.held_mouse.clear();
+        for (const key of [...this.held_keys])
+            this.send_key(key, false);
+        this.held_keys.clear();
+        this.look_pointer = null;
+        this.stick_pointer = null;
+        this.stick_knob.style.transform = "translate(0px, 0px)";
+    }
+
+    // Bring the joystick's held WASD in line with `wanted`: press new keys,
+    // release dropped ones.
+    sync_stick_keys(wanted: Set<string>) {
+        for (const key of [...this.stick_keys]) {
+            if (!wanted.has(key)) {
+                this.send_key(key, false);
+                this.stick_keys.delete(key);
+            }
+        }
+        for (const key of wanted) {
+            if (!this.stick_keys.has(key)) {
+                this.send_key(key, true);
+                this.stick_keys.add(key);
+            }
+        }
+    }
+
+    stick_move(e: PointerEvent) {
+        const rect = this.stick_base.getBoundingClientRect();
+        const max = rect.width / 2;
+        let dx = e.clientX - this.stick_center_x;
+        let dy = e.clientY - this.stick_center_y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > max) {
+            dx = dx / dist * max;
+            dy = dy / dist * max;
+        }
+        this.stick_knob.style.transform = "translate(" + dx + "px, " + dy + "px)";
+
+        // Dead zone, then the stick vector picks a sector of the classic
+        // 8-way WASD layout. Key codes, not characters: the host maps them
+        // to virtual keys independent of its active layout.
+        const wanted = new Set<string>();
+        if (dist > max * 0.22) {
+            const deg = Math.atan2(dy, dx) * 180 / Math.PI;
+            if (deg > -157.5 && deg < -22.5)
+                wanted.add("KeyW");
+            if (deg > 22.5 && deg < 157.5)
+                wanted.add("KeyS");
+            if (Math.abs(deg) > 112.5)
+                wanted.add("KeyA");
+            if (Math.abs(deg) < 67.5)
+                wanted.add("KeyD");
+        }
+        this.sync_stick_keys(wanted);
+    }
+
+    look_step(e: PointerEvent) {
+        const sens = settings.game_sensitivity_input.valueAsNumber || 1;
+        const dx = e.clientX - this.look_last_x;
+        const dy = e.clientY - this.look_last_y;
+        this.look_last_x = e.clientX;
+        this.look_last_y = e.clientY;
+        this.look_rest_x += dx * sens;
+        this.look_rest_y += dy * sens;
+        const send_x = Math.trunc(this.look_rest_x);
+        const send_y = Math.trunc(this.look_rest_y);
+        if (send_x === 0 && send_y === 0)
+            return;
+        this.look_rest_x -= send_x;
+        this.look_rest_y -= send_y;
+        this.webSocket.send(JSON.stringify({ "MouseMoveEvent": { dx: send_x, dy: send_y } }));
+    }
+
+    send_key(code: string, down: boolean) {
+        const key = {
+            event_type: down ? "down" : "up",
+            code: code,
+            key: code,
+            location: 0,
+            alt: false,
+            ctrl: false,
+            shift: false,
+            meta: false,
+        };
+        this.webSocket.send(JSON.stringify({ "KeyboardEvent": key }));
+    }
+
+    send_click(button: "left" | "middle" | "right", down: boolean) {
+        this.webSocket.send(JSON.stringify(
+            { "ClickEvent": { "button": button, "action": down ? "down" : "up" } }
+        ));
+    }
+}
+
 // The stage overlay replaces the plain black screen before the first video
 // frame arrives and turns into a readable error card if the websocket dies.
 // Kept outside the connection machinery so it can be used during init(),
@@ -1529,6 +1864,7 @@ function init() {
             new PointerHandler(webSocket);
             new SoftKeyboard(webSocket);
             new QuickBar(webSocket);
+            new GameMode(webSocket);
             is_connected = true;
         }
     },
