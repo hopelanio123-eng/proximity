@@ -1302,9 +1302,11 @@ class GameMode {
     stick_center_y: number = 0;
     // WASD currently held by the joystick
     stick_keys: Set<string> = new Set();
-    // keys and mouse buttons currently held by action buttons
-    held_keys: Set<string> = new Set();
-    held_mouse: Set<"left" | "middle" | "right"> = new Set();
+    // Refcounted held input: the joystick's slow-walk and the WALK button
+    // can hold the same key (ShiftLeft), so a key is released only when its
+    // last holder lets go.
+    key_refs: Map<string, number> = new Map();
+    mouse_refs: Map<string, number> = new Map();
     wake_lock: any = null;
 
     constructor(webSocket: WebSocket) {
@@ -1325,22 +1327,18 @@ class GameMode {
                 btn.setPointerCapture(e.pointerId);
                 btn.classList.add("pressed");
                 if (spec.mouse) {
-                    this.held_mouse.add(spec.mouse);
-                    this.send_click(spec.mouse, true);
+                    this.press_mouse(spec.mouse);
                     if (spec.mouse == "left" && navigator.vibrate)
                         navigator.vibrate(12);
                 } else if (spec.key) {
-                    this.held_keys.add(spec.key);
-                    this.send_key(spec.key, true);
+                    this.press_key(spec.key);
                 }
             });
             const release = (e: PointerEvent) => {
                 if (spec.mouse) {
-                    if (this.held_mouse.delete(spec.mouse))
-                        this.send_click(spec.mouse, false);
+                    this.release_mouse(spec.mouse);
                 } else if (spec.key) {
-                    if (this.held_keys.delete(spec.key))
-                        this.send_key(spec.key, false);
+                    this.release_key(spec.key);
                 }
                 btn.classList.remove("pressed");
             };
@@ -1480,15 +1478,53 @@ class GameMode {
     // page hides, so the host never keeps a stuck key or mouse button.
     release_all() {
         this.sync_stick_keys(new Set());
-        for (const mouse of [...this.held_mouse])
-            this.send_click(mouse, false);
-        this.held_mouse.clear();
-        for (const key of [...this.held_keys])
+        for (const key of [...this.key_refs.keys()])
             this.send_key(key, false);
-        this.held_keys.clear();
+        this.key_refs.clear();
+        for (const button of [...this.mouse_refs.keys()])
+            this.send_click(button as "left" | "middle" | "right", false);
+        this.mouse_refs.clear();
         this.look_pointer = null;
         this.stick_pointer = null;
         this.stick_knob.style.transform = "translate(0px, 0px)";
+    }
+
+    // Refcounted presses: the first holder sends the down event, the up
+    // event goes out only when the last holder of that key/button leaves.
+    press_key(code: string) {
+        const n = (this.key_refs.get(code) ?? 0) + 1;
+        this.key_refs.set(code, n);
+        if (n === 1)
+            this.send_key(code, true);
+    }
+
+    release_key(code: string) {
+        const n = this.key_refs.get(code) ?? 0;
+        if (n <= 1) {
+            if (n === 1)
+                this.send_key(code, false);
+            this.key_refs.delete(code);
+        } else {
+            this.key_refs.set(code, n - 1);
+        }
+    }
+
+    press_mouse(button: "left" | "middle" | "right") {
+        const n = (this.mouse_refs.get(button) ?? 0) + 1;
+        this.mouse_refs.set(button, n);
+        if (n === 1)
+            this.send_click(button, true);
+    }
+
+    release_mouse(button: "left" | "middle" | "right") {
+        const n = this.mouse_refs.get(button) ?? 0;
+        if (n <= 1) {
+            if (n === 1)
+                this.send_click(button, false);
+            this.mouse_refs.delete(button);
+        } else {
+            this.mouse_refs.set(button, n - 1);
+        }
     }
 
     // Bring the joystick's held WASD in line with `wanted`: press new keys,
@@ -1534,6 +1570,12 @@ class GameMode {
                 wanted.add("KeyA");
             if (Math.abs(deg) < 67.5)
                 wanted.add("KeyD");
+            // Analog speed, CS2 style: a gentle push past the dead zone
+            // walks quietly (Shift held), pushing the stick out to the
+            // edge releases Shift and runs at full speed.
+            const travel = Math.min(dist / max, 1);
+            if (travel < 0.55)
+                wanted.add("ShiftLeft");
         }
         this.sync_stick_keys(wanted);
     }
