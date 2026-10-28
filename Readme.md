@@ -29,10 +29,13 @@ typing from the local network.
   weapon slots, Tab/B/Esc. Sensitivity is adjustable and every held control
   is released when the page hides, the connection drops or the client quits.
   Ready-made button layouts ship for popular games (CS2, Valorant, Fortnite,
-  CoD: Warzone, Apex Legends, PUBG, Minecraft, League of Legends), a slider
-  scales every button, and an edit mode lets you move, resize, rebind, add
-  and delete buttons (and move the joystick) per game — the customized
-  layouts persist in the browser.
+  CoD: Warzone, Apex Legends, PUBG, Overwatch 2, Dota 2, GTA V, Rust,
+  Minecraft, League of Legends), sliders scale and fade every button, and an
+  edit mode lets you move, resize, rebind, add, duplicate and delete buttons
+  (and move the joystick) per game. Every button can act as hold, toggle
+  (tap to latch) or turbo (autofire), the joystick has an adjustable
+  deadzone and walk threshold, layouts export/import as JSON and the
+  customized layouts persist in the browser.
 - The host stays on your local network — no cloud account and no relay.
 
 ## Usage

@@ -1533,6 +1533,9 @@ interface GameLayoutState {
     preset: string;
     scale: number;
     alpha: number;
+    // Joystick deadzone and walk threshold in percent of the travel.
+    deadzone: number;
+    walk: number;
     stick: { x: number, y: number };
     buttons: Record<string, GameButtonSpec[]>;
 }
@@ -1550,6 +1553,7 @@ const GAME_EDIT_KEYS = (() => {
     codes.push("Space", "Tab", "Escape", "Enter", "CapsLock", "Backspace",
         "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft",
         "Backquote", "Minus", "Equal", "BracketLeft", "BracketRight",
+        "Semicolon", "Quote", "Comma", "Period", "Slash", "Backslash",
         "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8");
     return codes;
 })();
@@ -1562,6 +1566,8 @@ function game_key_label(code: string): string {
         Space: "SPACE", Tab: "TAB", Escape: "ESC", Enter: "ENTER",
         CapsLock: "CAPS", Backspace: "BKSP", Backquote: "`", Minus: "-",
         Equal: "=", BracketLeft: "[", BracketRight: "]",
+        Semicolon: ";", Quote: "'", Comma: ",", Period: ".",
+        Slash: "/", Backslash: "\\",
         ShiftLeft: "SHIFT", ShiftRight: "RSHFT",
         ControlLeft: "CTRL", ControlRight: "RCTRL", AltLeft: "ALT",
     };
@@ -1603,6 +1609,11 @@ class GameMode {
     scale: number = 1;
     // Global button opacity from the settings slider.
     alpha: number = 1;
+    // Joystick tuning from the settings sliders: the deadzone ignores tiny
+    //finger drift, the walk threshold picks where a push starts sneaking
+    // (Shift) instead of running.
+    deadzone: number = 22;
+    walk: number = 55;
     // Joystick position in percent; null falls back to the CSS default.
     stick_x: number | null = null;
     stick_y: number | null = null;
@@ -1688,6 +1699,26 @@ class GameMode {
         };
         alpha_input.onchange = () => this.save_state();
 
+        const deadzone_input = document.getElementById("game_deadzone") as HTMLInputElement;
+        const deadzone_output = deadzone_input.nextElementSibling as HTMLOutputElement;
+        deadzone_input.value = String(this.deadzone);
+        deadzone_output.value = this.deadzone + "%";
+        deadzone_input.oninput = () => {
+            this.deadzone = deadzone_input.valueAsNumber || 0;
+            deadzone_output.value = this.deadzone + "%";
+        };
+        deadzone_input.onchange = () => this.save_state();
+
+        const walk_input = document.getElementById("game_walk") as HTMLInputElement;
+        const walk_output = walk_input.nextElementSibling as HTMLOutputElement;
+        walk_input.value = String(this.walk);
+        walk_output.value = this.walk + "%";
+        walk_input.oninput = () => {
+            this.walk = walk_input.valueAsNumber || 55;
+            walk_output.value = this.walk + "%";
+        };
+        walk_input.onchange = () => this.save_state();
+
         document.getElementById("game_edit").onclick = (e) => {
             e.stopPropagation();
             this.set_editing(!this.editing);
@@ -1727,11 +1758,13 @@ class GameMode {
             if (e.pointerId !== this.stick_pointer)
                 return;
             this.stick_pointer = null;
+            // The knob is recentered in both modes: playing just resets the
+            // visual, editing leaves the moved base where it was dropped.
+            this.stick_knob.style.transform = "translate(0px, 0px)";
             if (this.editing) {
                 this.save_state();
                 return;
             }
-            this.stick_knob.style.transform = "translate(0px, 0px)";
             this.sync_stick_keys(new Set());
         };
         this.stick_base.addEventListener("pointerup", stick_end);
@@ -1852,6 +1885,10 @@ class GameMode {
                     this.scale = state.scale;
                 if (typeof state.alpha === "number" && state.alpha >= 0.3 && state.alpha <= 1)
                     this.alpha = state.alpha;
+                if (typeof state.deadzone === "number" && state.deadzone >= 0 && state.deadzone <= 40)
+                    this.deadzone = state.deadzone;
+                if (typeof state.walk === "number" && state.walk >= 30 && state.walk <= 90)
+                    this.walk = state.walk;
                 if (typeof state.stick?.x === "number" && typeof state.stick?.y === "number") {
                     this.stick_x = state.stick.x;
                     this.stick_y = state.stick.y;
@@ -1872,6 +1909,8 @@ class GameMode {
             preset: this.preset,
             scale: this.scale,
             alpha: this.alpha,
+            deadzone: this.deadzone,
+            walk: this.walk,
             stick: { x: this.stick_x ?? 16, y: this.stick_y ?? 76 },
             buttons: this.layouts,
         };
@@ -1883,6 +1922,9 @@ class GameMode {
     }
 
     load_preset(id: string) {
+        // Release first: release_all resolves latched toggles through the
+        // old specs, which are gone after the reassignment below.
+        this.release_all();
         this.preset = id;
         this.specs = clone_buttons(this.layouts[id] ?? GAME_PRESETS[id].buttons);
         this.set_editing(false);
@@ -1917,7 +1959,11 @@ class GameMode {
 
     // Rebuild every action button from the current specs. Called after preset
     // switches, edits and deletions; system buttons and the joystick survive.
+    // A re-render can happen while a button is held (the other thumb may be
+    // dragging a settings slider), and the removed element would never see
+    // its pointerup, so every held state is dropped here first.
     render_buttons() {
+        this.release_all();
         for (const el of Array.from(this.overlay.querySelectorAll(".game_btn")))
             el.remove();
         this.btn_els.clear();
@@ -2106,6 +2152,9 @@ class GameMode {
             if (!Array.isArray(parsed.buttons))
                 throw new Error("no buttons");
             const clean: GameButtonSpec[] = [];
+            // Duplicate ids would collide in getElementById and break the
+            // selection highlight, so every import gets unique ids.
+            const used_ids = new Set<string>();
             for (const b of parsed.buttons) {
                 if (!b || typeof b !== "object")
                     continue;
@@ -2114,8 +2163,14 @@ class GameMode {
                 if (mouse !== "left" && mouse !== "middle" && mouse !== "right" && !key)
                     continue;
                 const clamp = (v: any) => Math.min(98, Math.max(2, Number(v) || 50));
+                let id = typeof b.id === "string" && b.id ? b.id : "";
+                if (!id || used_ids.has(id))
+                    id = "gb_u" + Date.now().toString(36) + clean.length;
+                while (used_ids.has(id))
+                    id += "x";
+                used_ids.add(id);
                 clean.push({
-                    id: typeof b.id === "string" && b.id ? b.id : "gb_u" + Date.now().toString(36) + clean.length,
+                    id: id,
                     label: String(b.label ?? "BTN").slice(0, 6),
                     mouse: ["left", "middle", "right"].includes(mouse ?? "") ? mouse : undefined,
                     key: mouse ? undefined : key,
@@ -2450,7 +2505,7 @@ class GameMode {
         // 8-way WASD layout. Key codes, not characters: the host maps them
         // to virtual keys independent of its active layout.
         const wanted = new Set<string>();
-        if (dist > max * 0.22) {
+        if (dist > max * (this.deadzone / 100)) {
             const deg = Math.atan2(dy, dx) * 180 / Math.PI;
             if (deg > -157.5 && deg < -22.5)
                 wanted.add("KeyW");
@@ -2462,9 +2517,10 @@ class GameMode {
                 wanted.add("KeyD");
             // Analog speed, CS2 style: a gentle push past the dead zone
             // walks quietly (Shift held), pushing the stick out to the
-            // edge releases Shift and runs at full speed.
+            // edge releases Shift and runs at full speed. The walk
+            // threshold is tunable in the settings.
             const travel = Math.min(dist / max, 1);
-            if (travel < 0.55)
+            if (travel < this.walk / 100)
                 wanted.add("ShiftLeft");
         }
         this.sync_stick_keys(wanted);

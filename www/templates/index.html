@@ -263,6 +263,14 @@
                         <span>Button opacity</span>
                         <input type="range" id="game_btn_alpha" min="0.3" max="1" step="0.05" value="1" /><output>100%</output>
                     </label>
+                    <label class="slider">
+                        <span>Stick deadzone</span>
+                        <input type="range" id="game_deadzone" min="0" max="40" step="1" value="22" /><output>22%</output>
+                    </label>
+                    <label class="slider">
+                        <span>Walk threshold</span>
+                        <input type="range" id="game_walk" min="30" max="90" step="1" value="55" /><output>55%</output>
+                    </label>
                     <button id="game_edit" type="button" class="btn btn_ghost">Edit layout</button>
                     <span class="hint">Drag anywhere to aim, joystick: half = quiet walk, full = run. Edit layout moves, resizes, rebinds, adds and deletes buttons per game; each button can hold, toggle or autofire; changes are saved on this device.</span>
                 </section>

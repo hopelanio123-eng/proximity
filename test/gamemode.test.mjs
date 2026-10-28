@@ -57,7 +57,8 @@ function make_el(id) {
 
 const by_id = new Map();
 for (const id of ["game_overlay", "game_stick_base", "game_stick", "game_preset",
-    "game_btn_size", "game_btn_alpha", "game_edit", "game_settings", "handle"])
+    "game_btn_size", "game_btn_alpha", "game_deadzone", "game_walk", "game_edit",
+    "game_settings", "handle"])
     by_id.set(id, make_el(id));
 
 const sent = [];
@@ -161,6 +162,20 @@ check("toggle latched again", downs("ControlLeft") === 2 && gm.toggle_on.has("gb
 gm.release_all();
 check("release_all: toggle up", ups("ControlLeft") === 2 && gm.toggle_on.size === 0);
 
+// --- stuck-key regression: re-render while holding releases the key
+hold_el.fire("pointerdown", { pointerId: 7, stopPropagation() { } });
+check("hold pressed again", downs("KeyR") === 2);
+// e.g. the size slider moved with the other thumb mid-hold
+gm.render_buttons();
+check("re-render releases held key", ups("KeyR") === 2);
+
+// --- stuck-key regression: preset switch releases a latched toggle
+gm.btn_els.get("gb_crouch").fire("pointerdown", { pointerId: 8, stopPropagation() { } });
+check("toggle latched for preset test", gm.toggle_on.has("gb_crouch"));
+gm.load_preset("valorant");
+check("preset switch releases toggle", ups("ControlLeft") === 3);
+gm.load_preset("cs2");
+
 // --- stick in edit mode moves and persists; leaving edit releases keys
 gm.set_editing(true);
 check("edit mode class", by_id.get("game_overlay").classList.contains("edit"));
@@ -171,8 +186,13 @@ check("stick moved+saved", gm.stick_x > 10 && storage.has(GAME_LAYOUT_KEY));
 gm.set_editing(false);
 
 // --- persistence roundtrip
+// load_preset restored the built-in layout, so re-apply the toggle edit
+// the way a user's saved layout would carry it, then persist.
+gm.specs.find((s) => s.id === "gb_crouch").mode = "toggle";
+gm.save_state();
 const saved = JSON.parse(storage.get(GAME_LAYOUT_KEY));
 check("state saved: preset+scale+alpha", saved.preset === "cs2" && saved.scale === 1 && saved.alpha === 1);
+check("state saved: deadzone+walk", saved.deadzone === 22 && saved.walk === 55);
 check("state saved: edited buttons", saved.buttons.cs2.some((b) => b.id === "gb_crouch" && b.mode === "toggle"));
 
 // --- import validation rejects garbage
@@ -185,6 +205,16 @@ prompt_impl = () => JSON.stringify({ buttons: [{ label: "X", key: "KeyX", x: 10,
 gm.import_layout();
 // Import replaces the current layout: 1 valid entry kept, {bad:1} skipped.
 check("import: valid entries kept", gm.specs.length === 1 && gm.specs[0].label === "X" && gm.specs[0].key === "KeyX");
+
+// --- import duplicate ids are deduplicated
+prompt_impl = () => JSON.stringify({ buttons: [
+    { id: "gb_fire", label: "A", key: "KeyA", x: 10, y: 10, size: "sm" },
+    { id: "gb_fire", label: "B", key: "KeyB", x: 20, y: 20, size: "sm" },
+] });
+gm.import_layout();
+const import_ids = gm.specs.map((s) => s.id);
+check("import: duplicate ids deduped",
+    import_ids.length === 2 && new Set(import_ids).size === 2);
 
 console.log(fails.length ? "\nFAILURES: " + fails.join(", ") : "\nALL TESTS PASSED");
 process.exit(fails.length ? 1 : 0);
