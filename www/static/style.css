@@ -1264,6 +1264,7 @@ body.game_mode #quickbar {
     font-size: calc(0.68rem * var(--game_scale, 1));
     font-weight: 600;
     letter-spacing: 0.05em;
+    opacity: var(--game_alpha, 1);
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -1310,6 +1311,11 @@ body.game_mode #quickbar {
     border-color: var(--accent);
 }
 
+/* The joystick fades with the same opacity slider as the buttons. */
+#game_stick_base {
+    opacity: var(--game_alpha, 1);
+}
+
 /* Editor bar pinned to the bottom while the layout is being edited. */
 #game_edit_bar {
     position: fixed;
@@ -1338,7 +1344,9 @@ body.game_mode #quickbar {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-wrap: wrap;
     gap: 0.35rem;
+    max-width: 92vw;
 }
 
 .ge_btn {

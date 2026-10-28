@@ -243,6 +243,10 @@
                             <option value="warzone">CoD: Warzone</option>
                             <option value="apex">Apex Legends</option>
                             <option value="pubg">PUBG</option>
+                            <option value="overwatch">Overwatch 2</option>
+                            <option value="dota">Dota 2</option>
+                            <option value="gta">GTA V</option>
+                            <option value="rust">Rust</option>
                             <option value="minecraft">Minecraft</option>
                             <option value="lol">League of Legends</option>
                         </select>
@@ -255,8 +259,12 @@
                         <span>Button size</span>
                         <input type="range" id="game_btn_size" min="0.6" max="1.6" step="0.05" value="1" /><output>100%</output>
                     </label>
+                    <label class="slider">
+                        <span>Button opacity</span>
+                        <input type="range" id="game_btn_alpha" min="0.3" max="1" step="0.05" value="1" /><output>100%</output>
+                    </label>
                     <button id="game_edit" type="button" class="btn btn_ghost">Edit layout</button>
-                    <span class="hint">Drag anywhere to aim, joystick: half = quiet walk, full = run. Edit layout moves, resizes, rebinds, adds and deletes buttons per game; changes are saved on this device.</span>
+                    <span class="hint">Drag anywhere to aim, joystick: half = quiet walk, full = run. Edit layout moves, resizes, rebinds, adds and deletes buttons per game; each button can hold, toggle or autofire; changes are saved on this device.</span>
                 </section>
             </div>
 
