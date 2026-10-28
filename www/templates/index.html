@@ -234,11 +234,29 @@
                 </h3>
                 <section>
                     <label class="toggle"><input type="checkbox" id="game_mode" /> <span>Game mode <em>joystick, look area and action buttons</em></span></label>
+                    <label class="field_label" for="game_preset">Preset</label>
+                    <div class="select_wrap">
+                        <select id="game_preset">
+                            <option value="cs2">CS2 / CS:GO</option>
+                            <option value="valorant">Valorant</option>
+                            <option value="fortnite">Fortnite</option>
+                            <option value="warzone">CoD: Warzone</option>
+                            <option value="apex">Apex Legends</option>
+                            <option value="pubg">PUBG</option>
+                            <option value="minecraft">Minecraft</option>
+                            <option value="lol">League of Legends</option>
+                        </select>
+                    </div>
                     <label class="slider">
                         <span>Look sensitivity</span>
                         <input type="range" id="game_sensitivity" min="0.2" max="3" step="0.05" value="1" /><output>1.00</output>
                     </label>
-                    <span class="hint">Drag anywhere to aim, joystick: half = quiet walk, full = run. Buttons press mouse buttons or keys on the PC. Works best in fullscreen landscape.</span>
+                    <label class="slider">
+                        <span>Button size</span>
+                        <input type="range" id="game_btn_size" min="0.6" max="1.6" step="0.05" value="1" /><output>100%</output>
+                    </label>
+                    <button id="game_edit" type="button" class="btn btn_ghost">Edit layout</button>
+                    <span class="hint">Drag anywhere to aim, joystick: half = quiet walk, full = run. Edit layout moves, resizes, rebinds, adds and deletes buttons per game; changes are saved on this device.</span>
                 </section>
             </div>
 

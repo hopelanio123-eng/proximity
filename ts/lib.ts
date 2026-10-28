@@ -1256,30 +1256,243 @@ interface GameButtonSpec {
     size: "sm" | "md" | "lg";
 }
 
-// Default CS2 layout: the right thumb aims and fires, the left thumb walks,
-// utilities sit along the edges and weapon slots run along the bottom.
-const GAME_BUTTONS: GameButtonSpec[] = [
-    // right cluster
-    { id: "gb_fire", label: "FIRE", mouse: "left", x: 84, y: 70, size: "lg" },
-    { id: "gb_aim", label: "AIM", mouse: "right", x: 70, y: 57, size: "md" },
-    { id: "gb_jump", label: "JUMP", key: "Space", x: 88, y: 50, size: "md" },
-    { id: "gb_crouch", label: "CRCH", key: "ControlLeft", x: 70, y: 84, size: "md" },
-    // left cluster
-    { id: "gb_walk", label: "WALK", key: "ShiftLeft", x: 13, y: 48, size: "sm" },
-    { id: "gb_reload", label: "R", key: "KeyR", x: 26, y: 40, size: "sm" },
-    { id: "gb_use", label: "E", key: "KeyE", x: 10, y: 28, size: "sm" },
-    { id: "gb_drop", label: "G", key: "KeyG", x: 21, y: 20, size: "sm" },
-    // weapon slots along the bottom center
-    { id: "gb_slot1", label: "1", key: "Digit1", x: 44, y: 90, size: "sm" },
-    { id: "gb_slot2", label: "2", key: "Digit2", x: 50, y: 90, size: "sm" },
-    { id: "gb_slot3", label: "3", key: "Digit3", x: 56, y: 90, size: "sm" },
-    { id: "gb_slot4", label: "4", key: "Digit4", x: 62, y: 90, size: "sm" },
-    { id: "gb_lastw", label: "Q", key: "KeyQ", x: 68, y: 90, size: "sm" },
-    // top row: scoreboard, buy menu and the game menu
-    { id: "gb_score", label: "TAB", key: "Tab", x: 7, y: 8, size: "sm" },
-    { id: "gb_buy", label: "B", key: "KeyB", x: 14, y: 8, size: "sm" },
-    { id: "gb_esc", label: "ESC", key: "Escape", x: 21, y: 8, size: "sm" },
-];
+// Preset layouts for popular games. Every preset stays fully editable:
+// the edit mode can move, resize, rebind, add and delete buttons and the
+// result is kept per preset in localStorage.
+interface GamePreset {
+    name: string;
+    buttons: GameButtonSpec[];
+}
+
+const GAME_PRESETS: Record<string, GamePreset> = {
+    // Default CS2 layout: the right thumb aims and fires, the left thumb
+    // walks, utilities sit along the edges and weapon slots run along the
+    // bottom.
+    cs2: {
+        name: "CS2 / CS:GO", buttons: [
+            // right cluster
+            { id: "gb_fire", label: "FIRE", mouse: "left", x: 84, y: 70, size: "lg" },
+            { id: "gb_aim", label: "AIM", mouse: "right", x: 70, y: 57, size: "md" },
+            { id: "gb_jump", label: "JUMP", key: "Space", x: 88, y: 50, size: "md" },
+            { id: "gb_crouch", label: "CRCH", key: "ControlLeft", x: 70, y: 84, size: "md" },
+            // left cluster
+            { id: "gb_walk", label: "WALK", key: "ShiftLeft", x: 13, y: 48, size: "sm" },
+            { id: "gb_reload", label: "R", key: "KeyR", x: 26, y: 40, size: "sm" },
+            { id: "gb_use", label: "E", key: "KeyE", x: 10, y: 28, size: "sm" },
+            { id: "gb_drop", label: "G", key: "KeyG", x: 21, y: 20, size: "sm" },
+            // weapon slots along the bottom center
+            { id: "gb_slot1", label: "1", key: "Digit1", x: 44, y: 90, size: "sm" },
+            { id: "gb_slot2", label: "2", key: "Digit2", x: 50, y: 90, size: "sm" },
+            { id: "gb_slot3", label: "3", key: "Digit3", x: 56, y: 90, size: "sm" },
+            { id: "gb_slot4", label: "4", key: "Digit4", x: 62, y: 90, size: "sm" },
+            { id: "gb_lastw", label: "Q", key: "KeyQ", x: 68, y: 90, size: "sm" },
+            // top row: scoreboard, buy menu and the game menu
+            { id: "gb_score", label: "TAB", key: "Tab", x: 7, y: 8, size: "sm" },
+            { id: "gb_buy", label: "B", key: "KeyB", x: 14, y: 8, size: "sm" },
+            { id: "gb_esc", label: "ESC", key: "Escape", x: 21, y: 8, size: "sm" },
+        ]
+    },
+    valorant: {
+        name: "Valorant", buttons: [
+            { id: "gb_fire", label: "FIRE", mouse: "left", x: 84, y: 70, size: "lg" },
+            { id: "gb_aim", label: "AIM", mouse: "right", x: 70, y: 57, size: "md" },
+            { id: "gb_jump", label: "JUMP", key: "Space", x: 88, y: 50, size: "md" },
+            { id: "gb_crouch", label: "CRCH", key: "ControlLeft", x: 70, y: 84, size: "md" },
+            { id: "gb_walk", label: "WALK", key: "ShiftLeft", x: 13, y: 48, size: "sm" },
+            { id: "gb_reload", label: "R", key: "KeyR", x: 26, y: 34, size: "sm" },
+            { id: "gb_use", label: "F", key: "KeyF", x: 10, y: 26, size: "sm" },
+            { id: "gb_e", label: "E", key: "KeyE", x: 17, y: 26, size: "sm" },
+            { id: "gb_q", label: "Q", key: "KeyQ", x: 10, y: 16, size: "sm" },
+            { id: "gb_cab", label: "C", key: "KeyC", x: 17, y: 16, size: "sm" },
+            { id: "gb_ult", label: "X", key: "KeyX", x: 24, y: 16, size: "sm" },
+            { id: "gb_slot1", label: "1", key: "Digit1", x: 44, y: 90, size: "sm" },
+            { id: "gb_slot2", label: "2", key: "Digit2", x: 50, y: 90, size: "sm" },
+            { id: "gb_slot3", label: "3", key: "Digit3", x: 56, y: 90, size: "sm" },
+            { id: "gb_slot4", label: "4", key: "Digit4", x: 62, y: 90, size: "sm" },
+            { id: "gb_score", label: "TAB", key: "Tab", x: 7, y: 8, size: "sm" },
+            { id: "gb_buy", label: "B", key: "KeyB", x: 14, y: 8, size: "sm" },
+            { id: "gb_esc", label: "ESC", key: "Escape", x: 21, y: 8, size: "sm" },
+        ]
+    },
+    fortnite: {
+        name: "Fortnite", buttons: [
+            { id: "gb_fire", label: "FIRE", mouse: "left", x: 84, y: 70, size: "lg" },
+            { id: "gb_aim", label: "AIM", mouse: "right", x: 70, y: 57, size: "md" },
+            { id: "gb_jump", label: "JUMP", key: "Space", x: 88, y: 50, size: "md" },
+            { id: "gb_crouch", label: "CRCH", key: "ControlLeft", x: 70, y: 84, size: "md" },
+            { id: "gb_run", label: "RUN", key: "ShiftLeft", x: 13, y: 48, size: "sm" },
+            { id: "gb_reload", label: "R", key: "KeyR", x: 26, y: 40, size: "sm" },
+            { id: "gb_editk", label: "ED", key: "KeyG", x: 10, y: 28, size: "sm" },
+            { id: "gb_map", label: "MAP", key: "KeyM", x: 21, y: 20, size: "sm" },
+            // building keys above the weapon slots
+            { id: "gb_wall", label: "WALL", key: "F1", x: 58, y: 34, size: "sm" },
+            { id: "gb_floor", label: "FLR", key: "F2", x: 66, y: 28, size: "sm" },
+            { id: "gb_stair", label: "STA", key: "F3", x: 74, y: 34, size: "sm" },
+            { id: "gb_roof", label: "ROOF", key: "F4", x: 66, y: 42, size: "sm" },
+            { id: "gb_slot1", label: "1", key: "Digit1", x: 44, y: 90, size: "sm" },
+            { id: "gb_slot2", label: "2", key: "Digit2", x: 50, y: 90, size: "sm" },
+            { id: "gb_slot3", label: "3", key: "Digit3", x: 56, y: 90, size: "sm" },
+            { id: "gb_slot4", label: "4", key: "Digit4", x: 62, y: 90, size: "sm" },
+            { id: "gb_slot5", label: "5", key: "Digit5", x: 68, y: 90, size: "sm" },
+            { id: "gb_inv", label: "INV", key: "KeyI", x: 7, y: 8, size: "sm" },
+            { id: "gb_esc", label: "ESC", key: "Escape", x: 14, y: 8, size: "sm" },
+        ]
+    },
+    warzone: {
+        name: "CoD: Warzone", buttons: [
+            { id: "gb_fire", label: "FIRE", mouse: "left", x: 84, y: 70, size: "lg" },
+            { id: "gb_aim", label: "AIM", mouse: "right", x: 70, y: 57, size: "md" },
+            { id: "gb_jump", label: "JUMP", key: "Space", x: 88, y: 50, size: "md" },
+            { id: "gb_crouch", label: "CRCH", key: "KeyC", x: 70, y: 84, size: "md" },
+            { id: "gb_prone", label: "PRNE", key: "ControlLeft", x: 78, y: 88, size: "sm" },
+            { id: "gb_run", label: "RUN", key: "ShiftLeft", x: 13, y: 48, size: "sm" },
+            { id: "gb_reload", label: "R", key: "KeyR", x: 26, y: 40, size: "sm" },
+            { id: "gb_use", label: "F", key: "KeyF", x: 10, y: 28, size: "sm" },
+            { id: "gb_tac", label: "TAC", key: "KeyG", x: 21, y: 20, size: "sm" },
+            { id: "gb_leth", label: "LETH", key: "KeyQ", x: 10, y: 18, size: "sm" },
+            { id: "gb_slot1", label: "1", key: "Digit1", x: 44, y: 90, size: "sm" },
+            { id: "gb_slot2", label: "2", key: "Digit2", x: 50, y: 90, size: "sm" },
+            { id: "gb_slot3", label: "3", key: "Digit3", x: 56, y: 90, size: "sm" },
+            { id: "gb_slot4", label: "4", key: "Digit4", x: 62, y: 90, size: "sm" },
+            { id: "gb_score", label: "TAB", key: "Tab", x: 7, y: 8, size: "sm" },
+            { id: "gb_esc", label: "ESC", key: "Escape", x: 14, y: 8, size: "sm" },
+        ]
+    },
+    apex: {
+        name: "Apex Legends", buttons: [
+            { id: "gb_fire", label: "FIRE", mouse: "left", x: 84, y: 70, size: "lg" },
+            { id: "gb_aim", label: "AIM", mouse: "right", x: 70, y: 57, size: "md" },
+            { id: "gb_jump", label: "JUMP", key: "Space", x: 88, y: 50, size: "md" },
+            { id: "gb_crouch", label: "CRCH", key: "KeyC", x: 70, y: 84, size: "md" },
+            { id: "gb_run", label: "RUN", key: "ShiftLeft", x: 13, y: 48, size: "sm" },
+            { id: "gb_reload", label: "R", key: "KeyR", x: 26, y: 40, size: "sm" },
+            { id: "gb_use", label: "E", key: "KeyE", x: 10, y: 28, size: "sm" },
+            { id: "gb_tac", label: "TAC", key: "KeyQ", x: 21, y: 20, size: "sm" },
+            { id: "gb_ult", label: "ULT", key: "KeyZ", x: 10, y: 16, size: "sm" },
+            { id: "gb_gren", label: "GRN", key: "KeyG", x: 28, y: 16, size: "sm" },
+            { id: "gb_slot1", label: "1", key: "Digit1", x: 44, y: 90, size: "sm" },
+            { id: "gb_slot2", label: "2", key: "Digit2", x: 50, y: 90, size: "sm" },
+            { id: "gb_melee", label: "V", key: "KeyV", x: 56, y: 90, size: "sm" },
+            { id: "gb_heal", label: "4", key: "Digit4", x: 62, y: 90, size: "sm" },
+            { id: "gb_score", label: "TAB", key: "Tab", x: 7, y: 8, size: "sm" },
+            { id: "gb_map", label: "MAP", key: "KeyM", x: 14, y: 8, size: "sm" },
+            { id: "gb_esc", label: "ESC", key: "Escape", x: 21, y: 8, size: "sm" },
+        ]
+    },
+    pubg: {
+        name: "PUBG", buttons: [
+            { id: "gb_fire", label: "FIRE", mouse: "left", x: 84, y: 70, size: "lg" },
+            { id: "gb_aim", label: "AIM", mouse: "right", x: 70, y: 57, size: "md" },
+            { id: "gb_jump", label: "JUMP", key: "Space", x: 88, y: 50, size: "md" },
+            { id: "gb_crouch", label: "CRCH", key: "KeyC", x: 70, y: 84, size: "md" },
+            { id: "gb_prone", label: "PRNE", key: "KeyZ", x: 78, y: 88, size: "sm" },
+            { id: "gb_walk", label: "WALK", key: "ShiftLeft", x: 13, y: 48, size: "sm" },
+            { id: "gb_reload", label: "R", key: "KeyR", x: 26, y: 40, size: "sm" },
+            { id: "gb_use", label: "F", key: "KeyF", x: 10, y: 28, size: "sm" },
+            { id: "gb_gren", label: "GRN", key: "KeyG", x: 21, y: 20, size: "sm" },
+            { id: "gb_slot1", label: "1", key: "Digit1", x: 44, y: 90, size: "sm" },
+            { id: "gb_slot2", label: "2", key: "Digit2", x: 50, y: 90, size: "sm" },
+            { id: "gb_slot3", label: "3", key: "Digit3", x: 56, y: 90, size: "sm" },
+            { id: "gb_slot4", label: "4", key: "Digit4", x: 62, y: 90, size: "sm" },
+            { id: "gb_slot5", label: "5", key: "Digit5", x: 68, y: 90, size: "sm" },
+            { id: "gb_map", label: "MAP", key: "KeyM", x: 7, y: 8, size: "sm" },
+            { id: "gb_inv", label: "INV", key: "KeyI", x: 14, y: 8, size: "sm" },
+            { id: "gb_esc", label: "ESC", key: "Escape", x: 21, y: 8, size: "sm" },
+        ]
+    },
+    minecraft: {
+        name: "Minecraft", buttons: [
+            { id: "gb_atk", label: "ATK", mouse: "left", x: 84, y: 70, size: "lg" },
+            { id: "gb_use", label: "USE", mouse: "right", x: 70, y: 57, size: "md" },
+            { id: "gb_jump", label: "JUMP", key: "Space", x: 88, y: 50, size: "md" },
+            { id: "gb_sneak", label: "SNK", key: "ShiftLeft", x: 70, y: 84, size: "md" },
+            { id: "gb_sprint", label: "SPR", key: "ControlLeft", x: 13, y: 48, size: "sm" },
+            { id: "gb_drop", label: "Q", key: "KeyQ", x: 26, y: 40, size: "sm" },
+            { id: "gb_inv", label: "INV", key: "KeyE", x: 10, y: 28, size: "sm" },
+            { id: "gb_chat", label: "CHAT", key: "KeyT", x: 21, y: 20, size: "sm" },
+            { id: "gb_off", label: "OFF", key: "KeyF", x: 10, y: 18, size: "sm" },
+            { id: "gb_slot1", label: "1", key: "Digit1", x: 44, y: 90, size: "sm" },
+            { id: "gb_slot2", label: "2", key: "Digit2", x: 50, y: 90, size: "sm" },
+            { id: "gb_slot3", label: "3", key: "Digit3", x: 56, y: 90, size: "sm" },
+            { id: "gb_slot4", label: "4", key: "Digit4", x: 62, y: 90, size: "sm" },
+            { id: "gb_slot5", label: "5", key: "Digit5", x: 68, y: 90, size: "sm" },
+            { id: "gb_slot6", label: "6", key: "Digit6", x: 74, y: 90, size: "sm" },
+            { id: "gb_esc", label: "ESC", key: "Escape", x: 7, y: 8, size: "sm" },
+        ]
+    },
+    lol: {
+        name: "League of Legends", buttons: [
+            { id: "gb_q", label: "Q", key: "KeyQ", x: 84, y: 70, size: "lg" },
+            { id: "gb_w", label: "W", key: "KeyW", x: 70, y: 57, size: "md" },
+            { id: "gb_e", label: "E", key: "KeyE", x: 88, y: 50, size: "md" },
+            { id: "gb_r", label: "R", key: "KeyR", x: 70, y: 84, size: "md" },
+            { id: "gb_d", label: "D", key: "KeyD", x: 88, y: 84, size: "sm" },
+            { id: "gb_f", label: "F", key: "KeyF", x: 78, y: 88, size: "sm" },
+            { id: "gb_b", label: "B", key: "KeyB", x: 60, y: 74, size: "sm" },
+            { id: "gb_stop", label: "S", key: "KeyS", x: 26, y: 40, size: "sm" },
+            { id: "gb_item1", label: "1", key: "Digit1", x: 38, y: 90, size: "sm" },
+            { id: "gb_item2", label: "2", key: "Digit2", x: 44, y: 90, size: "sm" },
+            { id: "gb_item3", label: "3", key: "Digit3", x: 50, y: 90, size: "sm" },
+            { id: "gb_item4", label: "4", key: "Digit4", x: 56, y: 90, size: "sm" },
+            { id: "gb_item5", label: "5", key: "Digit5", x: 62, y: 90, size: "sm" },
+            { id: "gb_item6", label: "6", key: "Digit6", x: 68, y: 90, size: "sm" },
+            { id: "gb_score", label: "TAB", key: "Tab", x: 7, y: 8, size: "sm" },
+            { id: "gb_lock", label: "LOCK", key: "KeyY", x: 14, y: 8, size: "sm" },
+            { id: "gb_esc", label: "ESC", key: "Escape", x: 21, y: 8, size: "sm" },
+        ]
+    },
+};
+
+const GAME_DEFAULT_PRESET = "cs2";
+
+// Persisted game layout state: the chosen preset, the global button size
+// scale, the joystick position and per-preset edited button lists.
+interface GameLayoutState {
+    preset: string;
+    scale: number;
+    stick: { x: number, y: number };
+    buttons: Record<string, GameButtonSpec[]>;
+}
+
+const GAME_LAYOUT_KEY = "game_layout";
+
+// Keys offered in the button editor; KeyboardEvent codes, not characters,
+// because the host maps them to virtual keys independent of its layout.
+const GAME_EDIT_KEYS = (() => {
+    const codes: string[] = [];
+    for (let i = 65; i <= 90; i++)
+        codes.push("Key" + String.fromCharCode(i));
+    for (let i = 0; i <= 9; i++)
+        codes.push("Digit" + i);
+    codes.push("Space", "Tab", "Escape", "Enter", "CapsLock", "Backspace",
+        "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft",
+        "Backquote", "Minus", "Equal", "BracketLeft", "BracketRight",
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8");
+    return codes;
+})();
+
+function game_key_label(code: string): string {
+    const simple = code.match(/^(?:Key|Digit)(.)$/);
+    if (simple)
+        return simple[1];
+    const named: Record<string, string> = {
+        Space: "SPACE", Tab: "TAB", Escape: "ESC", Enter: "ENTER",
+        CapsLock: "CAPS", Backspace: "BKSP", Backquote: "`", Minus: "-",
+        Equal: "=", BracketLeft: "[", BracketRight: "]",
+        ShiftLeft: "SHIFT", ShiftRight: "RSHFT",
+        ControlLeft: "CTRL", ControlRight: "RCTRL", AltLeft: "ALT",
+    };
+    return named[code] ?? code;
+}
+
+function clone_buttons(specs: GameButtonSpec[]): GameButtonSpec[] {
+    return specs.map((s) => ({ ...s }));
+}
+
+// The action select encodes the binding as "mouse:<button>" / "key:<code>".
+function game_button_action(spec: GameButtonSpec): string {
+    return spec.mouse ? "mouse:" + spec.mouse : "key:" + (spec.key ?? "Space");
+}
 
 class GameMode {
     webSocket: WebSocket;
@@ -1287,6 +1500,28 @@ class GameMode {
     stick_base: HTMLElement;
     stick_knob: HTMLElement;
     enabled: boolean = false;
+
+    // Active preset id and its working button list. Edits land in `specs`
+    // and are copied into `layouts` on every save, so each preset keeps its
+    // own customized arrangement across reloads.
+    preset: string = GAME_DEFAULT_PRESET;
+    specs: GameButtonSpec[] = [];
+    layouts: Record<string, GameButtonSpec[]> = {};
+    // Global button size multiplier from the settings slider.
+    scale: number = 1;
+    // Joystick position in percent; null falls back to the CSS default.
+    stick_x: number | null = null;
+    stick_y: number | null = null;
+
+    // Layout editing state.
+    editing: boolean = false;
+    selected_id: string | null = null;
+    drag: { id: string, off_x: number, off_y: number } | null = null;
+    edit_bar: HTMLElement;
+    sel_panel: HTMLElement;
+    label_input: HTMLInputElement;
+    action_select: HTMLSelectElement;
+    size_select: HTMLSelectElement;
 
     // one pointer drags the look surface at a time
     look_pointer: number | null = null;
@@ -1315,37 +1550,32 @@ class GameMode {
         this.stick_base = document.getElementById("game_stick_base") as HTMLElement;
         this.stick_knob = document.getElementById("game_stick") as HTMLElement;
 
-        for (const spec of GAME_BUTTONS) {
-            const btn = document.createElement("div");
-            btn.id = spec.id;
-            btn.classList.add("game_btn", spec.size);
-            btn.textContent = spec.label;
-            btn.style.left = spec.x + "%";
-            btn.style.top = spec.y + "%";
-            btn.addEventListener("pointerdown", (e) => {
-                e.stopPropagation();
-                btn.setPointerCapture(e.pointerId);
-                btn.classList.add("pressed");
-                if (spec.mouse) {
-                    this.press_mouse(spec.mouse);
-                    if (spec.mouse == "left" && navigator.vibrate)
-                        navigator.vibrate(12);
-                } else if (spec.key) {
-                    this.press_key(spec.key);
-                }
-            });
-            const release = (e: PointerEvent) => {
-                if (spec.mouse) {
-                    this.release_mouse(spec.mouse);
-                } else if (spec.key) {
-                    this.release_key(spec.key);
-                }
-                btn.classList.remove("pressed");
-            };
-            btn.addEventListener("pointerup", release);
-            btn.addEventListener("pointercancel", release);
-            this.overlay.appendChild(btn);
-        }
+        this.load_state();
+        this.apply_scale();
+        this.apply_stick_position();
+        this.render_buttons();
+        this.build_edit_ui();
+
+        // Preset, button size and layout editing live in the settings sheet.
+        const preset_select = document.getElementById("game_preset") as HTMLSelectElement;
+        preset_select.value = this.preset;
+        preset_select.onchange = () => this.load_preset(preset_select.value);
+
+        const size_input = document.getElementById("game_btn_size") as HTMLInputElement;
+        const size_output = size_input.nextElementSibling as HTMLOutputElement;
+        size_input.value = String(this.scale);
+        size_output.value = Math.round(this.scale * 100) + "%";
+        size_input.oninput = () => {
+            this.scale = size_input.valueAsNumber || 1;
+            size_output.value = Math.round(this.scale * 100) + "%";
+            this.apply_scale();
+        };
+        size_input.onchange = () => this.save_state();
+
+        document.getElementById("game_edit").onclick = (e) => {
+            e.stopPropagation();
+            this.set_editing(!this.editing);
+        };
 
         // The joystick owns its pointer: with capture the finger may slide
         // outside the base and keeps steering until it is lifted.
@@ -1353,21 +1583,38 @@ class GameMode {
             e.stopPropagation();
             if (this.stick_pointer !== null)
                 return;
+            this.stick_pointer = e.pointerId;
+            this.stick_base.setPointerCapture(e.pointerId);
+            if (this.editing) {
+                // While editing the whole base is dragged around instead of
+                // steering; remember the grab offset for a smooth follow.
+                const base_rect = this.stick_base.getBoundingClientRect();
+                this.stick_center_x = e.clientX - (base_rect.left + base_rect.width / 2);
+                this.stick_center_y = e.clientY - (base_rect.top + base_rect.height / 2);
+                return;
+            }
             const rect = this.stick_base.getBoundingClientRect();
             this.stick_center_x = rect.left + rect.width / 2;
             this.stick_center_y = rect.top + rect.height / 2;
-            this.stick_pointer = e.pointerId;
-            this.stick_base.setPointerCapture(e.pointerId);
             this.stick_move(e);
         });
         this.stick_base.addEventListener("pointermove", (e) => {
-            if (e.pointerId === this.stick_pointer)
-                this.stick_move(e);
+            if (e.pointerId !== this.stick_pointer)
+                return;
+            if (this.editing) {
+                this.drag_stick(e);
+                return;
+            }
+            this.stick_move(e);
         });
         const stick_end = (e: PointerEvent) => {
             if (e.pointerId !== this.stick_pointer)
                 return;
             this.stick_pointer = null;
+            if (this.editing) {
+                this.save_state();
+                return;
+            }
             this.stick_knob.style.transform = "translate(0px, 0px)";
             this.sync_stick_keys(new Set());
         };
@@ -1455,6 +1702,8 @@ class GameMode {
 
     set_enabled(enabled: boolean) {
         this.enabled = enabled;
+        if (!enabled)
+            this.set_editing(false);
         this.release_all();
         this.overlay.classList.toggle("hide", !enabled);
         document.body.classList.toggle("game_mode", enabled);
@@ -1472,6 +1721,334 @@ class GameMode {
         } catch {
             // Denied or unsupported: the screen just sleeps as usual.
         }
+    }
+
+    // ------------------------------------------------------------ layout state
+
+    load_state() {
+        try {
+            const raw = localStorage.getItem(GAME_LAYOUT_KEY);
+            if (raw) {
+                const state = JSON.parse(raw) as GameLayoutState;
+                if (typeof state.preset === "string" && GAME_PRESETS[state.preset])
+                    this.preset = state.preset;
+                if (typeof state.scale === "number" && state.scale >= 0.5 && state.scale <= 2)
+                    this.scale = state.scale;
+                if (typeof state.stick?.x === "number" && typeof state.stick?.y === "number") {
+                    this.stick_x = state.stick.x;
+                    this.stick_y = state.stick.y;
+                }
+                for (const [id, buttons] of Object.entries(state.buttons ?? {}))
+                    if (GAME_PRESETS[id] && Array.isArray(buttons))
+                        this.layouts[id] = buttons;
+            }
+        } catch {
+            log(LogLevel.DEBUG, "Failed to load the game layout.");
+        }
+        this.specs = clone_buttons(this.layouts[this.preset] ?? GAME_PRESETS[this.preset].buttons);
+    }
+
+    save_state() {
+        this.layouts[this.preset] = clone_buttons(this.specs);
+        const state: GameLayoutState = {
+            preset: this.preset,
+            scale: this.scale,
+            stick: { x: this.stick_x ?? 16, y: this.stick_y ?? 76 },
+            buttons: this.layouts,
+        };
+        try {
+            localStorage.setItem(GAME_LAYOUT_KEY, JSON.stringify(state));
+        } catch {
+            // Storage full or disabled: the layout just does not persist.
+        }
+    }
+
+    load_preset(id: string) {
+        this.preset = id;
+        this.specs = clone_buttons(this.layouts[id] ?? GAME_PRESETS[id].buttons);
+        this.set_editing(false);
+        this.render_buttons();
+        this.save_state();
+    }
+
+    apply_scale() {
+        this.overlay.style.setProperty("--game_scale", this.scale.toFixed(2));
+    }
+
+    apply_stick_position() {
+        if (this.stick_x !== null)
+            this.stick_base.style.left = this.stick_x + "%";
+        if (this.stick_y !== null)
+            this.stick_base.style.top = this.stick_y + "%";
+    }
+
+    drag_stick(e: PointerEvent) {
+        const overlay_rect = this.overlay.getBoundingClientRect();
+        const x = (e.clientX - overlay_rect.left - this.stick_center_x) / overlay_rect.width * 100;
+        const y = (e.clientY - overlay_rect.top - this.stick_center_y) / overlay_rect.height * 100;
+        this.stick_x = Math.min(95, Math.max(5, x));
+        this.stick_y = Math.min(95, Math.max(8, y));
+        this.stick_base.style.left = this.stick_x + "%";
+        this.stick_base.style.top = this.stick_y + "%";
+    }
+
+    // Rebuild every action button from the current specs. Called after preset
+    // switches, edits and deletions; system buttons and the joystick survive.
+    render_buttons() {
+        for (const el of Array.from(this.overlay.querySelectorAll(".game_btn")))
+            el.remove();
+        for (const spec of this.specs) {
+            const btn = document.createElement("div");
+            btn.id = spec.id;
+            btn.classList.add("game_btn", spec.size);
+            btn.textContent = spec.label;
+            btn.style.left = spec.x + "%";
+            btn.style.top = spec.y + "%";
+            btn.addEventListener("pointerdown", (e) => {
+                e.stopPropagation();
+                btn.setPointerCapture(e.pointerId);
+                if (this.editing) {
+                    // Editing: tapping selects the button and starts a drag.
+                    // The grab offset keeps the button from jumping under
+                    // the finger.
+                    this.select(spec.id);
+                    const overlay_rect = this.overlay.getBoundingClientRect();
+                    const rect = btn.getBoundingClientRect();
+                    this.drag = {
+                        id: spec.id,
+                        off_x: (e.clientX - rect.left - rect.width / 2) / overlay_rect.width * 100,
+                        off_y: (e.clientY - rect.top - rect.height / 2) / overlay_rect.height * 100,
+                    };
+                    return;
+                }
+                btn.classList.add("pressed");
+                if (spec.mouse) {
+                    this.press_mouse(spec.mouse);
+                    if (spec.mouse == "left" && navigator.vibrate)
+                        navigator.vibrate(12);
+                } else if (spec.key) {
+                    this.press_key(spec.key);
+                }
+            });
+            btn.addEventListener("pointermove", (e) => {
+                if (!this.editing || this.drag?.id !== spec.id)
+                    return;
+                const overlay_rect = this.overlay.getBoundingClientRect();
+                const x = (e.clientX - overlay_rect.left) / overlay_rect.width * 100 - this.drag.off_x;
+                const y = (e.clientY - overlay_rect.top) / overlay_rect.height * 100 - this.drag.off_y;
+                spec.x = Math.min(98, Math.max(2, x));
+                spec.y = Math.min(98, Math.max(2, y));
+                btn.style.left = spec.x + "%";
+                btn.style.top = spec.y + "%";
+            });
+            const release = (e: PointerEvent) => {
+                if (this.editing) {
+                    if (this.drag?.id === spec.id) {
+                        this.drag = null;
+                        this.save_state();
+                    }
+                    return;
+                }
+                if (spec.mouse) {
+                    this.release_mouse(spec.mouse);
+                } else if (spec.key) {
+                    this.release_key(spec.key);
+                }
+                btn.classList.remove("pressed");
+            };
+            btn.addEventListener("pointerup", release);
+            btn.addEventListener("pointercancel", release);
+            if (spec.id === this.selected_id)
+                btn.classList.add("selected");
+            this.overlay.appendChild(btn);
+        }
+    }
+
+    // ------------------------------------------------------------- edit mode
+
+    selected_spec(): GameButtonSpec | undefined {
+        return this.specs.find((s) => s.id === this.selected_id);
+    }
+
+    // Show the editor for `id` (or hide the panel with null).
+    select(id: string | null) {
+        this.selected_id = id;
+        for (const el of Array.from(this.overlay.querySelectorAll(".game_btn.selected")))
+            el.classList.remove("selected");
+        if (!id) {
+            this.sel_panel.classList.add("hide");
+            return;
+        }
+        document.getElementById(id)?.classList.add("selected");
+        const spec = this.selected_spec();
+        if (!spec) {
+            this.sel_panel.classList.add("hide");
+            return;
+        }
+        this.label_input.value = spec.label;
+        this.action_select.value = game_button_action(spec);
+        this.size_select.value = spec.size;
+        this.sel_panel.classList.remove("hide");
+    }
+
+    add_button() {
+        const spec: GameButtonSpec = {
+            id: "gb_u" + Date.now().toString(36),
+            label: "BTN",
+            key: "KeyF",
+            x: 50,
+            y: 50,
+            size: "md",
+        };
+        this.specs.push(spec);
+        this.render_buttons();
+        this.select(spec.id);
+        this.save_state();
+    }
+
+    delete_selected() {
+        if (!this.selected_id)
+            return;
+        this.specs = this.specs.filter((s) => s.id !== this.selected_id);
+        this.select(null);
+        this.render_buttons();
+        this.save_state();
+    }
+
+    // Drop the per-preset customization and fall back to the built-in layout.
+    reset_layout() {
+        delete this.layouts[this.preset];
+        this.specs = clone_buttons(GAME_PRESETS[this.preset].buttons);
+        this.select(null);
+        this.render_buttons();
+        this.save_state();
+    }
+
+    set_editing(on: boolean) {
+        if (this.editing === on)
+            return;
+        this.editing = on;
+        this.drag = null;
+        // Leaving edit mode must not leave a held key behind.
+        this.release_all();
+        this.overlay.classList.toggle("edit", on);
+        this.edit_bar.classList.toggle("hide", !on);
+        if (!on)
+            this.select(null);
+        const edit_btn = document.getElementById("game_edit");
+        if (edit_btn)
+            edit_btn.textContent = on ? "Done editing" : "Edit layout";
+    }
+
+    // The bottom bar shown while editing: add / reset / done plus the editor
+    // for the selected button (label, binding, size, delete).
+    build_edit_ui() {
+        this.edit_bar = document.createElement("div");
+        this.edit_bar.id = "game_edit_bar";
+        this.edit_bar.classList.add("hide");
+        this.edit_bar.addEventListener("pointerdown", (e) => e.stopPropagation());
+
+        const button = (text: string, cls: string, onclick: () => void) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "ge_btn " + cls;
+            b.textContent = text;
+            b.onclick = (e) => {
+                e.stopPropagation();
+                onclick();
+            };
+            return b;
+        };
+
+        const row = document.createElement("div");
+        row.className = "ge_row";
+        row.appendChild(button("+ Add", "", () => this.add_button()));
+        row.appendChild(button("Reset", "", () => this.reset_layout()));
+        row.appendChild(button("Done", "ge_done", () => this.set_editing(false)));
+        this.edit_bar.appendChild(row);
+
+        this.sel_panel = document.createElement("div");
+        this.sel_panel.className = "ge_row ge_panel hide";
+
+        this.label_input = document.createElement("input");
+        this.label_input.type = "text";
+        this.label_input.className = "ge_input";
+        this.label_input.maxLength = 6;
+        this.label_input.placeholder = "Label";
+        this.label_input.oninput = () => {
+            const spec = this.selected_spec();
+            if (!spec)
+                return;
+            spec.label = this.label_input.value;
+            const el = document.getElementById(spec.id);
+            if (el)
+                el.textContent = spec.label;
+            this.save_state();
+        };
+
+        this.action_select = document.createElement("select");
+        this.action_select.className = "ge_select";
+        const mouse_group = document.createElement("optgroup");
+        mouse_group.label = "Mouse";
+        for (const m of ["left", "right", "middle"]) {
+            const opt = document.createElement("option");
+            opt.value = "mouse:" + m;
+            opt.textContent = "Mouse " + m;
+            mouse_group.appendChild(opt);
+        }
+        const key_group = document.createElement("optgroup");
+        key_group.label = "Key";
+        for (const code of GAME_EDIT_KEYS) {
+            const opt = document.createElement("option");
+            opt.value = "key:" + code;
+            opt.textContent = game_key_label(code);
+            key_group.appendChild(opt);
+        }
+        this.action_select.appendChild(mouse_group);
+        this.action_select.appendChild(key_group);
+        this.action_select.onchange = () => {
+            const spec = this.selected_spec();
+            if (!spec)
+                return;
+            const value = this.action_select.value;
+            if (value.startsWith("mouse:")) {
+                spec.mouse = value.slice(6) as "left" | "middle" | "right";
+                delete spec.key;
+            } else {
+                spec.key = value.slice(4);
+                delete spec.mouse;
+            }
+            this.save_state();
+        };
+
+        this.size_select = document.createElement("select");
+        this.size_select.className = "ge_select";
+        for (const [value, label] of [["sm", "S"], ["md", "M"], ["lg", "L"]]) {
+            const opt = document.createElement("option");
+            opt.value = value;
+            opt.textContent = label;
+            this.size_select.appendChild(opt);
+        }
+        this.size_select.onchange = () => {
+            const spec = this.selected_spec();
+            if (!spec)
+                return;
+            spec.size = this.size_select.value as "sm" | "md" | "lg";
+            const el = document.getElementById(spec.id);
+            if (el) {
+                el.classList.remove("sm", "md", "lg");
+                el.classList.add(spec.size);
+            }
+            this.save_state();
+        };
+
+        this.sel_panel.appendChild(this.label_input);
+        this.sel_panel.appendChild(this.action_select);
+        this.sel_panel.appendChild(this.size_select);
+        this.sel_panel.appendChild(button("\u2715", "ge_del", () => this.delete_selected()));
+        this.edit_bar.appendChild(this.sel_panel);
+
+        this.overlay.appendChild(this.edit_bar);
     }
 
     // Release every control state: on game mode changes and whenever the

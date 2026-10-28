@@ -1260,7 +1260,8 @@ body.game_mode #quickbar {
     border: 1px solid var(--glass-border);
     background: var(--glass);
     color: var(--text);
-    font-size: 0.68rem;
+    /* Scales with the button size slider through --game_scale. */
+    font-size: calc(0.68rem * var(--game_scale, 1));
     font-weight: 600;
     letter-spacing: 0.05em;
     touch-action: none;
@@ -1271,24 +1272,126 @@ body.game_mode #quickbar {
 }
 
 .game_btn.sm {
-    width: var(--tap);
-    height: var(--tap);
+    width: calc(var(--tap) * var(--game_scale, 1));
+    height: calc(var(--tap) * var(--game_scale, 1));
 }
 
 .game_btn.md {
-    width: 3.75rem;
-    height: 3.75rem;
+    width: calc(3.75rem * var(--game_scale, 1));
+    height: calc(3.75rem * var(--game_scale, 1));
 }
 
 .game_btn.lg {
-    width: 4.9rem;
-    height: 4.9rem;
+    width: calc(4.9rem * var(--game_scale, 1));
+    height: calc(4.9rem * var(--game_scale, 1));
 }
 
 .game_btn.pressed {
     background: var(--accent-soft);
     border-color: var(--accent);
     color: var(--accent-strong);
+}
+
+/* Layout editing: buttons stop pressing and start dragging. */
+#game_overlay.edit .game_btn {
+    border-style: dashed;
+    border-color: var(--accent);
+    opacity: 0.92;
+}
+
+#game_overlay.edit .game_btn.selected {
+    background: var(--accent-soft);
+    border-style: solid;
+    color: var(--accent-strong);
+}
+
+#game_overlay.edit #game_stick_base {
+    border-style: dashed;
+    border-color: var(--accent);
+}
+
+/* Editor bar pinned to the bottom while the layout is being edited. */
+#game_edit_bar {
+    position: fixed;
+    left: 50%;
+    bottom: calc(0.85rem + env(safe-area-inset-bottom));
+    z-index: 65;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.45rem;
+    border: 1px solid var(--glass-border);
+    border-radius: 0.9rem;
+    background: var(--glass);
+    box-shadow: var(--shadow);
+    transform: translateX(-50%);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#game_edit_bar.hide {
+    display: none;
+}
+
+.ge_row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+}
+
+.ge_btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.7rem;
+    height: 2.2rem;
+    padding: 0 0.6rem;
+    border-radius: 999px;
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--text);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.ge_btn:active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+
+.ge_done {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-strong);
+}
+
+.ge_del {
+    color: #ff8080;
+}
+
+.ge_input,
+.ge_select {
+    height: 2.2rem;
+    padding: 0 0.5rem;
+    border-radius: 0.55rem;
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--text);
+    font-size: 0.72rem;
+}
+
+.ge_input {
+    width: 4.4rem;
+}
+
+.ge_select {
+    max-width: 8rem;
 }
 
 .game_sysbtn {
