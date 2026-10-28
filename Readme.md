@@ -28,6 +28,11 @@ typing from the local network.
   and round buttons hold fire/aim (mouse buttons), jump/crouch/walk, reload,
   weapon slots, Tab/B/Esc. Sensitivity is adjustable and every held control
   is released when the page hides, the connection drops or the client quits.
+  Ready-made button layouts ship for popular games (CS2, Valorant, Fortnite,
+  CoD: Warzone, Apex Legends, PUBG, Minecraft, League of Legends), a slider
+  scales every button, and an edit mode lets you move, resize, rebind, add
+  and delete buttons (and move the joystick) per game — the customized
+  layouts persist in the browser.
 - The host stays on your local network — no cloud account and no relay.
 
 ## Usage
