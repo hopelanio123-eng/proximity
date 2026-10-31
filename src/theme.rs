@@ -10,6 +10,13 @@
 //! linear gradients of the originals are translated into a single ambient glow -
 //! the accent-tinted top edge of the window - and a "glow" color pulled from
 //! each preset's `--slider-button-active-color` stops.
+//!
+//! The first four presets come from the Eclypsion design set
+//! (design.eclypsion.org/tokens) and match the web client: `bg` is
+//! `--color-surface-content`, `surface` is `--color-surface-raised`, `accent`
+//! is `--color-fill-accent`, `accent_pressed` its hover fill and `glow`
+//! `--color-text-accent`. Text, border and status colors of the skin use the
+//! same token set for every palette.
 
 use fltk::enums::Color;
 
@@ -68,8 +75,10 @@ impl From<Rgb24> for Color {
 /// Everything the skin needs, derived from a palette plus base shades.
 #[derive(Clone)]
 pub struct Skin {
-    pub bg_start: Rgb24, // page background, ambient glow tinted top
-    pub bg_end: Rgb24,   // page background bottom
+    /// Tint of the ambient light blooms behind the islands and cards (the
+    /// desktop twin of the web client's aurora).
+    pub bloom: Rgb24,
+    pub bg_end: Rgb24, // page background
     pub nav_bg: Rgb24,   // sidebar background
     pub surface: Rgb24,  // cards and inputs
     pub pill: Rgb24,     // active nav item / status pill
@@ -94,9 +103,9 @@ pub struct Skin {
 
 impl Skin {
     pub fn from_palette(p: &Palette) -> Skin {
-        // Ambient glow: the top of the window is misted with the accent,
-        // echoing the radial gradients of the originals ("glow at the top").
-        let bg_start = p.bg.mix(p.glow, 60);
+        // Ambient light: soft blooms of the bright accent companion, echoing
+        // the radial gradients of the originals and the web client's aurora.
+        let bloom = p.glow;
         // Sidebar is an island on the alternate surface, one step above the
         // page - the same relation the launcher uses.
         let nav_bg = p.surface;
@@ -108,30 +117,35 @@ impl Skin {
         };
         let pill = nav_bg.mix(towards, 120);
         let divider = p.bg.mix(towards, 90);
+        // Eclypsion text ramp: primary, tertiary and secondary.
         let (text, dim, log_text) = if p.light {
             (
-                Rgb24::hex(0x22273a),
-                Rgb24::hex(0x63707f),
-                Rgb24::hex(0x4a5561),
+                Rgb24::hex(0x17181b),
+                Rgb24::hex(0x606369),
+                Rgb24::hex(0x3f4249),
             )
         } else {
             (
-                Rgb24::hex(0xe8ecf1),
-                Rgb24::hex(0x8b96a5),
-                Rgb24::hex(0xa0aab6),
+                Rgb24::hex(0xeff0f2),
+                Rgb24::hex(0x909296),
+                Rgb24::hex(0xbcbec2),
             )
         };
         // Chrome derived from the surface: a hairline (text at 10%) and the
         // recessed slot of a switch.
-        let border = p.surface.mix(towards, 100);
-        let track = p.surface.mix(towards, 170);
+        // Eclypsion: --color-border-default is text at 11%, the off switch
+        // slot is --color-fill-neutral-active (14%).
+        let border = p.surface.mix(towards, 110);
+        let track = p.surface.mix(towards, 140);
+        // --color-text-success for the live dot; the stop button uses
+        // --color-fill-danger, which keeps white text readable on both bases.
         let (success, danger) = if p.light {
-            (Rgb24::hex(0x1a7f37), Rgb24::hex(0xcf222e))
+            (Rgb24::hex(0x146c39), Rgb24::hex(0xcc3239))
         } else {
-            (Rgb24::hex(0x3fb950), Rgb24::hex(0xf85149))
+            (Rgb24::hex(0x50c277), Rgb24::hex(0xcc3239))
         };
         Skin {
-            bg_start,
+            bloom,
             bg_end: p.bg,
             nav_bg,
             surface: p.surface,
@@ -153,6 +167,42 @@ impl Skin {
 }
 
 pub const PALETTES: &[Palette] = &[
+    Palette {
+        name: "Эклипсион",
+        light: false,
+        bg: Rgb24::hex(0x0e0f12),
+        surface: Rgb24::hex(0x17181b),
+        accent: Rgb24::hex(0x5960df),
+        accent_pressed: Rgb24::hex(0x4d51cb),
+        glow: Rgb24::hex(0x8d9bfe),
+    },
+    Palette {
+        name: "Эклипсион Светлая",
+        light: true,
+        bg: Rgb24::hex(0xeff0f2),
+        surface: Rgb24::hex(0xffffff),
+        accent: Rgb24::hex(0x5960df),
+        accent_pressed: Rgb24::hex(0x4d51cb),
+        glow: Rgb24::hex(0x4d51cb),
+    },
+    Palette {
+        name: "Мэджик Блю",
+        light: false,
+        bg: Rgb24::hex(0x08111e),
+        surface: Rgb24::hex(0x101a28),
+        accent: Rgb24::hex(0x0077d5),
+        accent_pressed: Rgb24::hex(0x0067c4),
+        glow: Rgb24::hex(0x5ea8f9),
+    },
+    Palette {
+        name: "Классик Дарк",
+        light: false,
+        bg: Rgb24::hex(0x222325),
+        surface: Rgb24::hex(0x2a2b2d),
+        accent: Rgb24::hex(0x5960df),
+        accent_pressed: Rgb24::hex(0x4d51cb),
+        glow: Rgb24::hex(0x8d9bfe),
+    },
     Palette {
         name: "Анишелл",
         light: false,
