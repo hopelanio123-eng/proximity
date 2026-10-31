@@ -12,8 +12,18 @@ typing from the local network.
 - **Redesigned desktop GUI**: a floating island sidebar (224px rail, 44px rows,
   accent icon on the selected entry), matte graphite surfaces with hairlines,
   Segoe UI + Consolas typography, tracked uppercase eyebrows, compact spring
-  toggles, hover fades, a pulsing live-status dot with a bounce/ripple on
-  server state changes, and 23 color palettes with a live theme picker.
+  toggles, hover fades, a status card that cross-fades to green when the
+  server starts, and 27 color palettes with a live theme picker.
+- **Glass design on the Eclypsion tokens** (design.eclypsion.org/tokens): the
+  web client and the default desktop palette share the same surfaces, text
+  ramp, accent `#5960df`, radii (8/12/16 px), Inter + JetBrains Mono type and
+  spring easings. The web UI uses translucent blurred panels over a soft
+  aurora backdrop, a floating settings drawer / bottom sheet, a sliding
+  segmented tab control and iOS-style switches; light mode follows the system.
+- **Desktop window, glass edition**: a hero card with a static radar mark
+  that turns into a scannable QR code (now on Windows too) once the server
+  runs, a copy-address button, live tiles for port / access / codec, grouped
+  settings rows with hairline dividers and a status card in the sidebar.
 - **"Toggle Keyboard"** button in the web UI: opens a small text funnel on the
   device page. Whatever you type on your phone's *soft* keyboard (including
   Unicode/Cyrillic) is injected into the host:

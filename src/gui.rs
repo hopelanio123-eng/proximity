@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use fltk::app;
 use fltk::draw;
-use fltk::enums::{Align, Color, Font, FrameType, LabelType, UnmappedFrameType};
+use fltk::enums::{Align, CallbackTrigger, Color, Font, FrameType, LabelType, UnmappedFrameType};
 use fltk::image::PngImage;
 use fltk::menu::Choice;
 use std::sync::{mpsc, Arc, Mutex};
@@ -32,7 +32,8 @@ use pnet_datalink as datalink;
 use crate::config::{write_config, Config};
 use crate::protocol::{CustomInputAreas, Rect};
 use crate::gui_art::{
-    app_icon, draw_glyph, ICON_HOME_SVG, ICON_SETTINGS_SVG, LOGO_GLYPH_SVG,
+    app_icon, draw_glyph, ICON_CHECK_SVG, ICON_COPY_SVG, ICON_HOME_SVG, ICON_SETTINGS_SVG,
+    LOGO_GLYPH_SVG,
 };
 use crate::theme::{palette_by_name, Rgb24, Skin, DEFAULT_PALETTE, PALETTES};
 use crate::web::Web2UiMessage::UInputInaccessible;
@@ -73,19 +74,55 @@ fn apply_palette(name: Option<&str>) {
     }
 }
 
-/// Re-point FLTK's built-in faces at the launcher's type stack: Segoe UI for
-/// the interface and Consolas for values. Windows expects a one-character
-/// variant prefix before the family (' ' plain, 'B' bold, 'I' italic,
-/// 'P' bold-italic); FLTK keeps the pointer, so the CString is leaked.
+/// Whether a font family looks installed, judged by a file name prefix in the
+/// system and per-user Windows font folders (e.g. "inter" for Inter.ttc,
+/// InterVariable.ttf or Inter-Regular.ttf).
+fn font_installed(file_prefix: &str) -> bool {
+    let mut dirs = vec![std::path::PathBuf::from(r"C:\Windows\Fonts")];
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        dirs.push(std::path::PathBuf::from(local).join(r"Microsoft\Windows\Fonts"));
+    }
+    dirs.iter().any(|dir| {
+        std::fs::read_dir(dir)
+            .map(|entries| {
+                entries.flatten().any(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .to_ascii_lowercase()
+                        .starts_with(file_prefix)
+                })
+            })
+            .unwrap_or(false)
+    })
+}
+
+/// Re-point FLTK's built-in faces at the Eclypsion type stack: Inter for the
+/// interface and JetBrains Mono for values when they are installed, Segoe UI
+/// and Consolas otherwise. Windows expects a one-character variant prefix
+/// before the family (' ' plain, 'B' bold, 'I' italic, 'P' bold-italic);
+/// FLTK keeps the pointer, so the CString is leaked.
 fn install_fonts() {
     use std::ffi::CString;
+    // Headings use weight 600: Segoe UI ships it as its own "Segoe UI
+    // Semibold" family, Inter is bolded through the variant prefix.
+    let (sans, sans_bold) = if font_installed("inter") {
+        (" Inter", "BInter")
+    } else {
+        (" Segoe UI", " Segoe UI Semibold")
+    };
+    let mono = if font_installed("jetbrainsmono") {
+        "JetBrains Mono"
+    } else {
+        "Consolas"
+    };
+    let family = &sans[1..];
     for (face, name) in [
-        (0, " Segoe UI"),
-        (1, "BSegoe UI"),
-        (2, "ISegoe UI"),
-        (3, "PSegoe UI"),
-        (4, " Consolas"),
-        (5, "BConsolas"),
+        (0, sans.to_string()),
+        (1, sans_bold.to_string()),
+        (2, format!("I{family}")),
+        (3, format!("P{family}")),
+        (4, format!(" {mono}")),
+        (5, format!("B{mono}")),
     ] {
         let name = CString::new(name).unwrap().into_raw();
         unsafe {
@@ -202,7 +239,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     wind.set_xclass("proximity");
     wind.set_callback(move |_win| app.quit());
     wind.set_frame(FrameType::FlatBox);
-    wind.set_color(Color::from_rgb(14, 17, 22));
+    wind.set_color(Color::from_rgb(14, 15, 18));
     wind.set_id("main_window");
     // Use the project mark instead of the default FLTK icon in the taskbar.
     if window_icon.is_some() {
@@ -227,7 +264,7 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         .with_size(NAV_W, WIN_H)
         .with_id("nav_bar");
 
-    // The rail itself: a floating island on the alternate surface.
+    // The rail itself: a floating glass island on the alternate surface.
     let mut nav_island = Frame::default()
         .with_size(200, WIN_H - 24)
         .with_pos(12, 12)
@@ -237,48 +274,52 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     Frame::default()
         .with_size(36, 36)
-        .with_pos(24, 26)
+        .with_pos(28, 30)
         .with_align(Align::Center | Align::Inside.bits())
         .with_label("")
         .with_id("brand_mark");
     Frame::default()
-        .with_size(130, 24)
-        .with_pos(70, 22)
+        .with_size(120, 20)
+        .with_pos(74, 29)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("Proximity")
         .with_id("head_title");
     Frame::default()
-        .with_size(130, 14)
-        .with_pos(71, 47)
+        .with_size(120, 14)
+        .with_pos(74, 50)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label(&format!("v{}", env!("CARGO_PKG_VERSION")))
         .with_id("head_sub");
 
     Frame::default()
-        .with_size(140, 16)
-        .with_pos(24, 96)
+        .with_size(160, 14)
+        .with_pos(30, 100)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("МЕНЮ")
         .with_id("nav_caption");
 
     let mut nav_home_btn = Button::default()
-        .with_size(184, 44)
-        .with_pos(20, 118)
+        .with_size(176, 40)
+        .with_pos(24, 120)
         .with_label("Главная")
         .with_id("nav_home");
     nav_home_btn.draw(|b| draw_nav_item(b, true));
     nav_home_btn.super_draw(false);
+    nav_home_btn.clear_visible_focus();
     let mut nav_settings_btn = Button::default()
-        .with_size(184, 44)
-        .with_pos(20, 166)
+        .with_size(176, 40)
+        .with_pos(24, 164)
         .with_label("Настройки")
         .with_id("nav_settings");
     nav_settings_btn.draw(|b| draw_nav_item(b, false));
     nav_settings_btn.super_draw(false);
+    nav_settings_btn.clear_visible_focus();
 
+    // Server state card at the foot of the island: live dot, state and a
+    // one-line hint underneath.
     let mut status_pill = Frame::default()
-        .with_size(184, 34)
-        .with_pos(20, WIN_H - 62)
+        .with_size(176, 56)
+        .with_pos(24, WIN_H - 84)
         .with_align(Align::Center | Align::Inside.bits())
         .with_label("Сервер выключен")
         .with_id("status_pill");
@@ -295,89 +336,146 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     nav_bar.end();
 
     // --- Home page ---------------------------------------------------------
+    //
+    //  ГЛАВНАЯ
+    //  Управляй компьютером с телефона
+    //  ┌ hero card ───────────────────────────────────────┐
+    //  │ ┌ visual / QR ┐  state title                     │
+    //  │ │             │  description                     │
+    //  │ │             │  [ Запустить / Остановить ]      │
+    //  │ └─────────────┘  [ http://address        ][⧉]   │
+    //  └──────────────────────────────────────────────────┘
+    //  [ порт ] [ доступ ] [ кодек ]
+    //  ЖУРНАЛ                               СООБЩЕНИЯ СЕРВЕРА
+    //  [ log                                              ]
     let mut page_home = Group::default()
         .with_pos(NAV_W, 0)
         .with_size(CONTENT_W, WIN_H)
         .with_id("page_home");
 
     Frame::default()
-        .with_size(PAGE_W, 76)
-        .with_pos(PAD, 16)
-        .with_align(Align::Left | Align::Top | Align::Inside.bits())
-        .with_label("Управляй компьютером\nиз любого браузера")
+        .with_size(PAGE_W, 14)
+        .with_pos(PAD, 30)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("ГЛАВНАЯ")
+        .with_id("home_eyebrow");
+
+    Frame::default()
+        .with_size(PAGE_W, 32)
+        .with_pos(PAD, 48)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("Управляй компьютером с телефона")
         .with_id("hero_title");
 
     Frame::default()
         .with_size(PAGE_W, 18)
-        .with_pos(PAD, 100)
+        .with_pos(PAD, 82)
         .with_align(Align::Left | Align::Inside.bits())
-        .with_label("Запусти сервер и открой адрес на телефоне")
+        .with_label("Запусти сервер и открой адрес в браузере на телефоне")
         .with_id("hero_sub");
 
-    // Server card: state, primary action, connect address and the QR code.
-    // Platforms without a QR keep a shorter card and give the space to the log.
-    let server_card_h = if cfg!(target_os = "linux") { 220 } else { 172 };
-    let log_caption_y = 130 + server_card_h + 24;
-    let log_y = log_caption_y + 20;
+    const HERO_Y: i32 = 120;
+    const HERO_H: i32 = 212;
+    const VIS: i32 = 172;
+    const COL_X: i32 = PAD + 20 + VIS + 24;
+    const COL_W: i32 = PAGE_W - 20 - VIS - 24 - 20;
+
     Frame::default()
-        .with_size(PAGE_W, server_card_h)
-        .with_pos(PAD, 130)
+        .with_size(PAGE_W, HERO_H)
+        .with_pos(PAD, HERO_Y)
         .with_id("server_card");
 
+    // Offline: the proximity mark as a slowly breathing radar. Live: the QR
+    // code of the connect address takes its place.
+    let mut hero_visual = Frame::default()
+        .with_size(VIS, VIS)
+        .with_pos(PAD + 20, HERO_Y + 20)
+        .with_id("hero_visual");
+    hero_visual.draw(draw_hero_visual);
+    hero_visual.super_draw(false);
+
+    let mut qr_frame = Frame::default()
+        .with_size(VIS, VIS)
+        .with_pos(PAD + 20, HERO_Y + 20)
+        .with_align(Align::Center | Align::Inside.bits())
+        .with_id("qr_frame");
+    qr_frame.hide();
+
+    Frame::default()
+        .with_size(COL_W, 24)
+        .with_pos(COL_X, HERO_Y + 24)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("Сервер выключен")
+        .with_id("state_title");
+
+    Frame::default()
+        .with_size(COL_W, 36)
+        .with_pos(COL_X, HERO_Y + 50)
+        .with_align(Align::Left | Align::Top | Align::Inside.bits())
+        .with_label(STATE_DESC_OFF)
+        .with_id("state_desc");
+
     let mut but_toggle = Button::default()
-        .with_size(200, 46)
-        .with_pos(PAD + 20, 152)
+        .with_size(COL_W, 48)
+        .with_pos(COL_X, HERO_Y + 96)
         .with_label("Запустить")
         .with_id("btn_toggle");
     but_toggle.draw(draw_primary_button);
     but_toggle.super_draw(false);
+    but_toggle.clear_visible_focus();
 
     Frame::default()
-        .with_size(216, 18)
-        .with_pos(PAD + 20, 218)
+        .with_size(COL_W, 36)
+        .with_pos(COL_X, HERO_Y + 156)
         .with_align(Align::Left | Align::Inside.bits())
-        .with_label("Сервер не запущен")
+        .with_label("Адрес появится после запуска")
         .with_id("offline_hint");
 
-    let mut label_addr = Frame::default()
-        .with_size(216, 16)
-        .with_pos(PAD + 20, 216)
-        .with_align(Align::Left | Align::Inside.bits())
-        .with_label("АДРЕС ДЛЯ ПОДКЛЮЧЕНИЯ")
-        .with_id("label_addr");
-    label_addr.hide();
-
     let mut output_server_addr = Output::default()
-        .with_size(
-            if cfg!(target_os = "linux") {
-                216
-            } else {
-                PAGE_W - 40
-            },
-            40,
-        )
-        .with_pos(PAD + 20, 234)
+        .with_size(COL_W - 44, 36)
+        .with_pos(COL_X, HERO_Y + 156)
         .with_label("")
         .with_id("output_addr");
     output_server_addr.hide();
 
-    let mut qr_frame = Frame::default()
-        .with_size(180, 180)
-        .with_pos(PAD + 256, 148)
-        .with_id("qr_frame");
-    qr_frame.hide();
+    let mut btn_copy = Button::default()
+        .with_size(36, 36)
+        .with_pos(COL_X + COL_W - 36, HERO_Y + 156)
+        .with_label("")
+        .with_id("btn_copy");
+    btn_copy.draw(draw_copy_button);
+    btn_copy.super_draw(false);
+    btn_copy.clear_visible_focus();
+    btn_copy.set_tooltip("Скопировать адрес");
+    btn_copy.set_callback(|_| {
+        if let Some(out) = app::widget_from_id::<Output>("output_addr") {
+            app::copy(&out.value());
+            MOTION.lock().unwrap().copied = 1.0;
+        }
+    });
+    btn_copy.hide();
 
-    let mut qr_hint = Frame::default()
-        .with_size(180, 180)
-        .with_pos(PAD + 256, 148)
-        .with_align(Align::Center | Align::Inside.bits())
-        .with_label("QR-код появится\nпосле запуска")
-        .with_id("qr_hint");
-    // The Windows and macOS builds never show a QR code.
-    if !cfg!(target_os = "linux") {
-        qr_hint.hide();
+    // Three small tiles with the settings that matter when connecting.
+    const TILE_Y: i32 = HERO_Y + HERO_H + 16;
+    const TILE_W: i32 = (PAGE_W - 2 * 12) / 3;
+    for (i, (id, tile)) in [
+        ("tile_port", Tile::Port),
+        ("tile_access", Tile::Access),
+        ("tile_codec", Tile::Codec),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut f = Frame::default()
+            .with_size(TILE_W, 76)
+            .with_pos(PAD + i as i32 * (TILE_W + 12), TILE_Y)
+            .with_id(id);
+        f.draw(move |f| draw_stat_tile(f, tile));
+        f.super_draw(false);
     }
 
+    let log_caption_y = TILE_Y + 76 + 24;
+    let log_y = log_caption_y + 20;
     Frame::default()
         .with_size(PAGE_W, 14)
         .with_pos(PAD, log_caption_y)
@@ -407,6 +505,9 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     shift_children(&mut page_home, NAV_W);
 
     // --- Settings page -----------------------------------------------------
+    //
+    // Grouped list cards like the web client: a title on the left of every
+    // row, its control on the right, hairlines between the rows.
     let mut page_settings = Group::default()
         .with_pos(NAV_W, 0)
         .with_size(CONTENT_W, WIN_H)
@@ -414,30 +515,63 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
 
     Frame::default()
         .with_size(PAGE_W, 14)
-        .with_pos(PAD, 26)
+        .with_pos(PAD, 30)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("НАСТРОЙКИ")
+        .with_id("set_eyebrow");
+
+    Frame::default()
+        .with_size(PAGE_W, 32)
+        .with_pos(PAD, 48)
+        .with_align(Align::Left | Align::Inside.bits())
+        .with_label("Параметры сервера")
+        .with_id("set_title");
+
+    const ROW_X: i32 = PAD + 16;
+    const ROW_W: i32 = PAGE_W - 32;
+    const CTRL_W: i32 = 232;
+    const CTRL_X: i32 = PAD + PAGE_W - 16 - CTRL_W;
+    let row_label = |id: &str, label: &str, y: i32, h: i32| {
+        Frame::default()
+            .with_size(ROW_W - CTRL_W - 12, h)
+            .with_pos(ROW_X, y)
+            .with_align(Align::Left | Align::Inside.bits())
+            .with_label(label)
+            .with_id(id);
+    };
+    let divider = |id: &str, y: i32| {
+        let mut f = Frame::default()
+            .with_size(ROW_W, 1)
+            .with_pos(ROW_X, y)
+            .with_id(id);
+        f.draw(draw_divider);
+        f.super_draw(false);
+    };
+
+    // Appearance.
+    const SKIN_Y: i32 = 120;
+    Frame::default()
+        .with_size(PAGE_W, 14)
+        .with_pos(PAD, SKIN_Y - 20)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("ОФОРМЛЕНИЕ")
         .with_id("sec_skin");
 
     Frame::default()
-        .with_size(PAGE_W, 92)
-        .with_pos(PAD, 46)
+        .with_size(PAGE_W, 60)
+        .with_pos(PAD, SKIN_Y)
         .with_id("card_skin");
 
-    Frame::default()
-        .with_size(240, 14)
-        .with_pos(PAD + 18, 62)
-        .with_align(Align::Left | Align::Inside.bits())
-        .with_label("ТЕМА")
-        .with_id("theme_label");
+    row_label("theme_label", "Тема", SKIN_Y, 60);
 
     let mut choice_theme = Choice::default()
-        .with_size(PAGE_W - 36, 40)
-        .with_pos(PAD + 18, 80)
+        .with_size(CTRL_W, 36)
+        .with_pos(CTRL_X, SKIN_Y + 12)
         .with_label("")
         .with_id("choice_theme");
     choice_theme.draw(draw_choice);
     choice_theme.super_draw(false);
+    choice_theme.clear_visible_focus();
 
     for palette in PALETTES {
         choice_theme.add_choice(palette.name);
@@ -454,34 +588,36 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
             .unwrap_or(0) as i32,
     );
 
+    // Network and access: three fields plus the autostart switch.
+    const NET_Y: i32 = SKIN_Y + 60 + 40;
+    const ROW_H: i32 = 56;
+    const SWITCH_ROW_H: i32 = 64;
     Frame::default()
         .with_size(PAGE_W, 14)
-        .with_pos(PAD, 160)
+        .with_pos(PAD, NET_Y - 20)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("СЕТЬ И ДОСТУП")
         .with_id("sec_net");
 
     Frame::default()
-        .with_size(PAGE_W, 292)
-        .with_pos(PAD, 180)
+        .with_size(PAGE_W, 3 * ROW_H + SWITCH_ROW_H)
+        .with_pos(PAD, NET_Y)
         .with_id("card_net");
 
-    for (id, label, y) in [
-        ("label_access", "КОД ДОСТУПА", 196),
-        ("label_bind", "АДРЕС ПРИВЯЗКИ", 270),
-        ("label_port", "ПОРТ", 344),
+    for (id, label, row) in [
+        ("label_access", "Код доступа", 0),
+        ("label_bind", "Адрес привязки", 1),
+        ("label_port", "Порт", 2),
     ] {
-        Frame::default()
-            .with_size(300, 14)
-            .with_pos(PAD + 18, y)
-            .with_align(Align::Left | Align::Inside.bits())
-            .with_label(label)
-            .with_id(id);
+        row_label(id, label, NET_Y + row * ROW_H, ROW_H);
     }
+    divider("div_net_1", NET_Y + ROW_H);
+    divider("div_net_2", NET_Y + 2 * ROW_H);
+    divider("div_net_3", NET_Y + 3 * ROW_H);
 
     let mut input_access_code = Input::default()
-        .with_pos(PAD + 18, 214)
-        .with_size(PAGE_W - 36, 40)
+        .with_pos(CTRL_X, NET_Y + 10)
+        .with_size(CTRL_W, 36)
         .with_id("input_access");
     input_access_code.set_tooltip(
         "Restrict who can control your computer with an access code. Note that this does NOT do \
@@ -494,76 +630,62 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     }
 
     let mut input_bind_addr = Input::default()
-        .with_size(PAGE_W - 36, 40)
-        .with_pos(PAD + 18, 288)
+        .with_size(CTRL_W, 36)
+        .with_pos(CTRL_X, NET_Y + ROW_H + 10)
         .with_id("input_bind");
     input_bind_addr.set_value(&config.bind_address.to_string());
 
     let mut input_port = IntInput::default()
-        .with_size(PAGE_W - 36, 40)
-        .with_pos(PAD + 18, 362)
+        .with_size(CTRL_W, 36)
+        .with_pos(CTRL_X, NET_Y + 2 * ROW_H + 10)
         .with_id("input_port");
     input_port.set_value(&config.web_port.to_string());
 
+    let auto_y = NET_Y + 3 * ROW_H;
     let mut check_auto_start = CheckButton::default()
-        .with_size(PAGE_W - 36, 48)
-        .with_pos(PAD + 18, 414)
+        .with_size(ROW_W, 30)
+        .with_pos(ROW_X, auto_y + 8)
         .with_label("Автозапуск")
         .with_id("check_auto");
     check_auto_start.draw(|c| draw_switch(c, Switch::Auto));
     check_auto_start.super_draw(false);
+    check_auto_start.clear_visible_focus();
     check_auto_start.set_tooltip("Start Proximity server immediately on program start.");
     check_auto_start.set_checked(config.auto_start);
 
     Frame::default()
-        .with_size(PAGE_W - 36, 14)
-        .with_pos(PAD + 18, 444)
+        .with_size(ROW_W - 60, 14)
+        .with_pos(ROW_X, auto_y + 38)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("Поднимать сервер при старте приложения")
         .with_id("desc_auto");
 
-    #[cfg(target_os = "linux")]
-    let mut check_wayland = CheckButton::default()
-        .with_size(PAGE_W - 36, 48)
-        .with_pos(PAD + 18, 632)
-        .with_label("Wayland / PipeWire")
-        .with_id("check_wayland");
-    #[cfg(target_os = "linux")]
-    {
-        check_wayland.draw(|c| draw_switch(c, Switch::Wayland));
-        check_wayland.super_draw(false);
-        check_wayland.set_tooltip(
-            "EXPERIMENTAL! This may crash your desktop! Enables screen \
-        capturing for Wayland using PipeWire and GStreamer.",
-        );
-        check_wayland.set_checked(config.wayland_support);
-        Frame::default()
-            .with_size(PAGE_W - 36, 14)
-            .with_pos(PAD + 18, 662)
-            .with_align(Align::Left | Align::Inside.bits())
-            .with_label("Захват экрана через PipeWire (экспериментально)")
-            .with_id("desc_wayland");
-    }
-
+    // Hardware acceleration.
+    const HW_Y: i32 = NET_Y + 3 * ROW_H + SWITCH_ROW_H + 40;
     Frame::default()
         .with_size(PAGE_W, 14)
-        .with_pos(PAD, 496)
+        .with_pos(PAD, HW_Y - 20)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label("УСКОРЕНИЕ")
         .with_id("sec_hw");
 
-    let hw_card_h = if cfg!(target_os = "linux") { 170 } else { 118 };
+    let hw_rows = if cfg!(target_os = "linux") { 3 } else { 2 };
     Frame::default()
-        .with_size(PAGE_W, hw_card_h)
-        .with_pos(PAD, 516)
+        .with_size(PAGE_W, hw_rows * SWITCH_ROW_H)
+        .with_pos(PAD, HW_Y)
         .with_id("card_hw");
+    divider("div_hw_1", HW_Y + SWITCH_ROW_H);
+    if hw_rows > 2 {
+        divider("div_hw_2", HW_Y + 2 * SWITCH_ROW_H);
+    }
 
     let mut check_native_hw_accel = CheckButton::default()
-        .with_size(PAGE_W - 36, 48)
-        .with_pos(PAD + 18, 528)
+        .with_size(ROW_W, 30)
+        .with_pos(ROW_X, HW_Y + 8)
         .with_id("check_native");
     check_native_hw_accel.draw(|c| draw_switch(c, Switch::Native));
     check_native_hw_accel.super_draw(false);
+    check_native_hw_accel.clear_visible_focus();
 
     #[cfg(target_os = "linux")]
     let native_desc = "Кодирование через VAAPI";
@@ -572,8 +694,8 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     #[cfg(target_os = "windows")]
     let native_desc = "Аппаратное кодирование через Media Foundation";
     Frame::default()
-        .with_size(PAGE_W - 36, 14)
-        .with_pos(PAD + 18, 558)
+        .with_size(ROW_W - 60, 14)
+        .with_pos(ROW_X, HW_Y + 38)
         .with_align(Align::Left | Align::Inside.bits())
         .with_label(native_desc)
         .with_id("desc_native");
@@ -603,19 +725,20 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
     }
 
     let mut check_nvenc = CheckButton::default()
-        .with_size(PAGE_W - 36, 48)
-        .with_pos(PAD + 18, 580)
+        .with_size(ROW_W, 30)
+        .with_pos(ROW_X, HW_Y + SWITCH_ROW_H + 8)
         .with_label("NVENC")
         .with_id("check_nvenc");
     check_nvenc.draw(|c| draw_switch(c, Switch::Nvenc));
     check_nvenc.super_draw(false);
+    check_nvenc.clear_visible_focus();
     check_nvenc.set_tooltip("Try to use Nvidia's NVENC to encode the video via GPU.");
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     {
         Frame::default()
-            .with_size(PAGE_W - 36, 14)
-            .with_pos(PAD + 18, 610)
+            .with_size(ROW_W - 60, 14)
+            .with_pos(ROW_X, HW_Y + SWITCH_ROW_H + 38)
             .with_align(Align::Left | Align::Inside.bits())
             .with_label("Кодирование через NVIDIA NVENC")
             .with_id("desc_nvenc");
@@ -629,6 +752,38 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
         check_nvenc.deactivate();
         check_nvenc.hide();
     }
+
+    #[cfg(target_os = "linux")]
+    let mut check_wayland = CheckButton::default()
+        .with_size(ROW_W, 30)
+        .with_pos(ROW_X, HW_Y + 2 * SWITCH_ROW_H + 8)
+        .with_label("Wayland / PipeWire")
+        .with_id("check_wayland");
+    #[cfg(target_os = "linux")]
+    {
+        check_wayland.draw(|c| draw_switch(c, Switch::Wayland));
+        check_wayland.super_draw(false);
+        check_wayland.clear_visible_focus();
+        check_wayland.set_tooltip(
+            "EXPERIMENTAL! This may crash your desktop! Enables screen \
+        capturing for Wayland using PipeWire and GStreamer.",
+        );
+        check_wayland.set_checked(config.wayland_support);
+        Frame::default()
+            .with_size(ROW_W - 60, 14)
+            .with_pos(ROW_X, HW_Y + 2 * SWITCH_ROW_H + 38)
+            .with_align(Align::Left | Align::Inside.bits())
+            .with_label("Захват экрана через PipeWire (экспериментально)")
+            .with_id("desc_wayland");
+    }
+
+    // The home tiles mirror these settings; repaint them on every edit.
+    input_access_code.set_trigger(CallbackTrigger::Changed);
+    input_access_code.set_callback(|_| redraw_tiles());
+    input_port.set_trigger(CallbackTrigger::Changed);
+    input_port.set_callback(|_| redraw_tiles());
+    check_native_hw_accel.set_callback(|_| redraw_tiles());
+    check_nvenc.set_callback(|_| redraw_tiles());
 
     page_settings.end();
     shift_children(&mut page_settings, NAV_W);
@@ -721,15 +876,15 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                             .with_label("Proximity - UInput inaccessible!");
                         pop_up.set_xclass("proximity");
                         pop_up.set_frame(FrameType::FlatBox);
-                        pop_up.set_color(Color::from_rgb(14, 17, 22));
+                        pop_up.set_color(Color::from_rgb(14, 15, 18));
 
                         let buf = TextBuffer::default();
                         let mut pop_up_text = TextDisplay::default().with_size(w, h);
                         pop_up_text.set_buffer(buf);
                         pop_up_text.wrap_mode(fltk::text::WrapMode::AtBounds, 5);
                         pop_up_text.set_frame(FrameType::FlatBox);
-                        pop_up_text.set_color(Color::from_rgb(14, 17, 22));
-                        pop_up_text.set_text_color(Color::from_rgb(232, 236, 241));
+                        pop_up_text.set_color(Color::from_rgb(14, 15, 18));
+                        pop_up_text.set_text_color(Color::from_rgb(239, 240, 242));
                         pop_up_text.set_text_size(13);
                         let mut buf = pop_up_text.buffer().unwrap();
                         buf.set_text(std::include_str!("strings/uinput_error.txt"));
@@ -744,10 +899,6 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                 is_server_running = true;
                 SERVER_LIVE.store(true, Ordering::Relaxed);
                 kick_status(true);
-                if let Some(mut pill) = app::widget_from_id::<Frame>("status_pill") {
-                    pill.set_label("Сервер работает");
-                    pill.redraw();
-                }
 
                 write_config(&config);
 
@@ -785,12 +936,27 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                     }
                 }
 
-                #[cfg(not(target_os = "windows"))]
+                #[cfg(target_os = "windows")]
                 {
+                    if web_sock.ip().is_unspecified() {
+                        if let Some(ip) = guess_local_ip(web_sock.is_ipv4()) {
+                            web_sock.set_ip(ip);
+                        }
+                    }
+                }
+
+                // Address and QR code, on every platform: the phone camera
+                // opens the page straight from the code.
+                let known_ip = !web_sock.ip().is_unspecified();
+                let addr_string = if known_ip {
+                    format!("http://{}", web_sock)
+                } else {
+                    "http://<your ip address>".to_string()
+                };
+                output_server_addr.set_value(&addr_string);
+                if known_ip {
                     use image::Luma;
                     use qrcode::QrCode;
-                    let addr_string = format!("http://{}", web_sock);
-                    output_server_addr.set_value(&addr_string);
                     let mut url_string = addr_string;
                     if let Some(access_code) = &config.access_code {
                         url_string.push_str("?access_code=");
@@ -803,11 +969,13 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                         );
                     }
 
-                    let cb = move |qr_frame: &mut Frame, _, _, w, h| {
+                    // The frame is a white rounded tile; the code sits inside
+                    // it with the tile's padding as its quiet zone.
+                    let cb = move |qr_frame: &mut Frame, _, _, w: i32, h: i32| {
                         let code = QrCode::new(&url_string).unwrap();
-                        let img_buf = code.render::<Luma<u8>>().build();
+                        let img_buf = code.render::<Luma<u8>>().quiet_zone(false).build();
                         let image = image::DynamicImage::ImageLuma8(img_buf);
-                        let dims = min(w, h) as u32;
+                        let dims = (min(w, h) - 2 * QR_PAD).max(16) as u32;
                         let image =
                             image.resize_exact(dims, dims, image::imageops::FilterType::Nearest);
                         let mut buf = vec![];
@@ -826,57 +994,26 @@ pub fn run(config: &Config, log_receiver: mpsc::Receiver<String>) {
                     cb(&mut qr_frame, x, y, w, h);
                     qr_frame.resize_callback(cb);
                     qr_frame.show();
-                }
-                #[cfg(target_os = "windows")]
-                {
-                    if web_sock.ip().is_unspecified() {
-                        if let Some(ip) = guess_local_ip(web_sock.is_ipv4()) {
-                            web_sock.set_ip(ip);
-                        }
-                    }
-                    if web_sock.ip().is_unspecified() {
-                        output_server_addr.set_value("http://<your ip address>");
-                    } else {
-                        output_server_addr.set_value(&format!("http://{}", web_sock));
+                    if let Some(mut f) = app::widget_from_id::<Frame>("hero_visual") {
+                        f.hide();
                     }
                 }
                 output_server_addr.show();
                 but.set_label("Остановить");
-                if let Some(mut f) = app::widget_from_id::<Frame>("offline_hint") {
-                    f.hide();
-                }
-                if let Some(mut f) = app::widget_from_id::<Frame>("qr_hint") {
-                    if cfg!(target_os = "linux") {
-                        f.hide();
-                    }
-                }
-                if let Some(mut f) = app::widget_from_id::<Frame>("label_addr") {
-                    f.show();
-                }
+                set_hero_state(true);
             } else {
                 proximity.stop();
                 but.set_label("Запустить");
                 output_server_addr.hide();
                 qr_frame.resize_callback(|_, _, _, _, _| {});
                 qr_frame.hide();
-                if let Some(mut f) = app::widget_from_id::<Frame>("offline_hint") {
+                if let Some(mut f) = app::widget_from_id::<Frame>("hero_visual") {
                     f.show();
                 }
-                if let Some(mut f) = app::widget_from_id::<Frame>("qr_hint") {
-                    if cfg!(target_os = "linux") {
-                        f.show();
-                    }
-                }
-                if let Some(mut f) = app::widget_from_id::<Frame>("label_addr") {
-                    f.hide();
-                }
+                set_hero_state(false);
                 is_server_running = false;
                 SERVER_LIVE.store(false, Ordering::Relaxed);
                 kick_status(false);
-                if let Some(mut pill) = app::widget_from_id::<Frame>("status_pill") {
-                    pill.set_label("Сервер выключен");
-                    pill.redraw();
-                }
             }
             Ok(())
         }() {
@@ -944,15 +1081,16 @@ fn style_nav_items() {
     }
 }
 
-/// Modern skin applied on top of every widget, driven by the active palette
+/// Glass skin applied on top of every widget, driven by the active palette
 /// (see src/theme.rs). Every styled widget is looked up by id, so this can be
 /// re-run at any time - in particular right after a theme switch, which
 /// would otherwise keep stale colors around.
 fn apply_skin() {
     let skin = skin();
     let bg = Color::from(skin.bg_end);
-    let nav_bg = Color::from(skin.nav_bg);
     let surface = Color::from(skin.surface);
+    // Inputs sit a step above the card, like --color-fill-neutral on glass.
+    let field = Color::from(field_color(&skin));
     let accent = Color::from(skin.accent);
     let accent_pressed = Color::from(skin.accent_pressed);
     let text = Color::from(skin.text);
@@ -965,51 +1103,52 @@ fn apply_skin() {
         w.set_frame(FrameType::FlatBox);
         w.set_color(bg);
     }
-    if let Some(mut g) = app::widget_from_id::<Group>("nav_bar") {
-        g.set_frame(FrameType::NoBox);
+    for id in ["nav_bar", "page_home", "page_settings"] {
+        if let Some(mut g) = app::widget_from_id::<Group>(id) {
+            g.set_frame(FrameType::NoBox);
+        }
     }
-    for id in ["head_title", "head_sub"] {
+
+    // Plain text frames: (id, font, size, color).
+    let bold = Font::HelveticaBold;
+    let regular = Font::Helvetica;
+    let mono = Font::Courier;
+    for (id, font, size, color) in [
+        ("head_title", bold, 16, text),
+        ("head_sub", mono, 11, dim),
+        ("hero_title", bold, 24, text),
+        ("hero_sub", regular, 13, dim),
+        ("set_title", bold, 24, text),
+        ("state_title", bold, 18, text),
+        ("state_desc", regular, 13, dim),
+        ("offline_hint", regular, 12, dim),
+        ("theme_label", regular, 14, text),
+        ("label_access", regular, 14, text),
+        ("label_bind", regular, 14, text),
+        ("label_port", regular, 14, text),
+        ("desc_auto", regular, 12, dim),
+        ("desc_native", regular, 12, dim),
+        ("desc_nvenc", regular, 12, dim),
+        ("desc_wayland", regular, 12, dim),
+    ] {
         if let Some(mut f) = app::widget_from_id::<Frame>(id) {
             f.set_frame(FrameType::NoBox);
-            f.set_label_color(text);
+            f.set_label_font(font);
+            f.set_label_size(size);
+            f.set_label_color(color);
         }
     }
-    if let Some(mut f) = app::widget_from_id::<Frame>("head_title") {
-        f.set_label_font(Font::HelveticaBold);
-        f.set_label_size(18);
-    }
-    if let Some(mut f) = app::widget_from_id::<Frame>("head_sub") {
-        f.set_label_font(Font::Courier);
-        f.set_label_size(10);
-        f.set_label_color(dim);
-    }
-    // Cards and their captions on the settings page.
-    for id in ["card_skin", "card_net", "card_hw"] {
-        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
-            f.set_frame(card_frame());
-            f.set_color(surface);
-        }
-    }
-    for id in ["desc_auto", "desc_native", "desc_nvenc", "desc_wayland"] {
-        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
-            f.set_frame(FrameType::NoBox);
-            f.set_label_color(dim);
-            f.set_label_size(12);
-        }
-    }
-    // Eyebrow captions: uppercase, tracked, third-level color.
+
+    // Eyebrow captions: uppercase, tracked, tertiary.
     for id in [
         "nav_caption",
+        "home_eyebrow",
+        "set_eyebrow",
         "sec_skin",
         "sec_net",
         "sec_hw",
-        "theme_label",
-        "label_access",
-        "label_bind",
-        "label_port",
         "log_caption",
         "log_hint",
-        "label_addr",
     ] {
         if let Some(mut f) = app::widget_from_id::<Frame>(id) {
             f.set_frame(FrameType::NoBox);
@@ -1017,47 +1156,55 @@ fn apply_skin() {
             f.super_draw(false);
         }
     }
+
+    // Glass cards.
+    for id in ["server_card", "card_skin", "card_net", "card_hw"] {
+        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
+            f.set_frame(card_frame());
+            f.set_color(surface);
+        }
+    }
+
     if let Some(mut f) = app::widget_from_id::<Frame>("status_pill") {
         f.set_label_size(12);
     }
     if let Some(mut b) = app::widget_from_id::<Button>("btn_toggle") {
         b.set_label_color(Color::White);
-        b.set_label_size(15);
+        b.set_label_size(14);
         b.set_label_font(Font::HelveticaBold);
         b.set_selection_color(accent_pressed);
     }
     if let Some(mut w) = app::widget_from_id::<Output>("output_addr") {
         w.set_frame(field_frame());
-        w.set_color(surface);
+        w.set_color(field);
         w.set_label_color(dim);
         w.set_text_color(text);
         w.set_text_font(Font::Courier);
         w.set_text_size(12);
     }
-    if let Some(mut f) = app::widget_from_id::<Frame>("server_card") {
-        f.set_frame(card_frame());
-        f.set_color(surface);
-    }
     for id in ["input_access", "input_bind"] {
         if let Some(mut w) = app::widget_from_id::<Input>(id) {
             w.set_frame(field_frame());
-            w.set_color(surface);
+            w.set_color(field);
             w.set_text_color(text);
             w.set_text_font(Font::Helvetica);
             w.set_text_size(13);
             w.set_cursor_color(accent);
+            w.set_selection_color(accent);
         }
     }
     if let Some(mut w) = app::widget_from_id::<IntInput>("input_port") {
         w.set_frame(field_frame());
-        w.set_color(surface);
+        w.set_color(field);
         w.set_text_color(text);
         w.set_text_font(Font::Courier);
         w.set_text_size(13);
         w.set_cursor_color(accent);
+        w.set_selection_color(accent);
     }
     if let Some(mut c) = app::widget_from_id::<Choice>("choice_theme") {
-        c.set_color(surface);
+        // These colors style the popup list FLTK opens for the choice.
+        c.set_color(Color::from(skin.surface));
         c.set_text_color(text);
         c.set_text_size(13);
         c.set_selection_color(accent);
@@ -1066,7 +1213,7 @@ fn apply_skin() {
     for id in ["check_auto", "check_native", "check_nvenc", "check_wayland"] {
         if let Some(mut c) = app::widget_from_id::<CheckButton>(id) {
             c.set_label_color(text);
-            c.set_label_size(13);
+            c.set_label_size(14);
             c.set_color(surface);
             c.set_selection_color(accent);
             c.redraw();
@@ -1078,55 +1225,68 @@ fn apply_skin() {
         t.set_text_color(log_text);
         t.set_text_font(Font::Courier);
         t.set_text_size(11);
+        t.set_selection_color(accent);
     }
     if let Some(mut f) = app::widget_from_id::<Frame>("qr_frame") {
         f.set_frame(card_frame());
         f.set_color(Color::White);
     }
-    for id in ["hero_title", "hero_sub", "qr_hint", "offline_hint"] {
-        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
-            f.set_frame(FrameType::NoBox);
-        }
-    }
-    if let Some(mut f) = app::widget_from_id::<Frame>("hero_title") {
-        f.set_label_color(text);
-        f.set_label_font(Font::HelveticaBold);
-        f.set_label_size(26);
-    }
-    if let Some(mut f) = app::widget_from_id::<Frame>("hero_sub") {
-        f.set_label_color(dim);
-        f.set_label_size(12);
-    }
-    for id in ["qr_hint", "offline_hint"] {
-        if let Some(mut f) = app::widget_from_id::<Frame>(id) {
-            f.set_label_color(dim);
-            f.set_label_size(12);
-        }
-    }
+}
 
-    // Decorative captions sit directly on the glow backdrop, so they must not
-    // paint their own rectangle; pages hold the backdrop as first child.
-    for id in [
-        "sec_skin",
-        "sec_net",
-        "sec_hw",
-        "head_title",
-        "head_sub",
-        "nav_caption",
-    ] {
+/// Fill of text fields and the theme picker: the card surface lifted a step
+/// towards the text color (Eclypsion --color-fill-neutral).
+fn field_color(skin: &Skin) -> Rgb24 {
+    skin.surface.mix(skin.pill, 550)
+}
+
+/// Repaint the three home tiles after a setting they mirror changed.
+fn redraw_tiles() {
+    for id in ["tile_port", "tile_access", "tile_codec"] {
         if let Some(mut f) = app::widget_from_id::<Frame>(id) {
-            f.set_frame(FrameType::NoBox);
-            f.set_color(bg);
+            f.redraw();
         }
     }
-    if let Some(mut f) = app::widget_from_id::<Frame>("nav_caption") {
+}
+
+const STATE_DESC_OFF: &str = "Запусти сервер, затем открой адрес\nна телефоне в той же сети";
+const STATE_DESC_ON: &str = "Наведи камеру телефона на QR-код\nили открой адрес в браузере";
+
+/// Padding of the white QR tile around the code (its quiet zone).
+const QR_PAD: i32 = 14;
+
+/// Swap the hero texts and the copy button between the stopped and the
+/// running server.
+fn set_hero_state(live: bool) {
+    if let Some(mut f) = app::widget_from_id::<Frame>("state_title") {
+        f.set_label(if live { "Сервер работает" } else { "Сервер выключен" });
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("state_desc") {
+        f.set_label(if live { STATE_DESC_ON } else { STATE_DESC_OFF });
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("offline_hint") {
+        if live {
+            f.hide();
+        } else {
+            f.show();
+        }
+    }
+    if let Some(mut b) = app::widget_from_id::<Button>("btn_copy") {
+        if live {
+            b.show();
+        } else {
+            b.hide();
+        }
+    }
+    if let Some(mut f) = app::widget_from_id::<Frame>("server_card") {
         f.redraw();
     }
-    // The page groups must not paint their own box over the backdrop.
-    for id in ["page_home", "page_settings"] {
-        if let Some(mut g) = app::widget_from_id::<Group>(id) {
-            g.set_frame(FrameType::NoBox);
-        }
+    if let Some(mut f) = app::widget_from_id::<Frame>("status_pill") {
+        f.set_label(if live { "Сервер работает" } else { "Сервер выключен" });
+        f.redraw();
+    }
+    // Parent repaint so the labels never leave ghosts on the card.
+    if let Some(mut g) = app::widget_from_id::<Group>("page_home") {
+        g.redraw();
     }
 }
 
@@ -1152,50 +1312,103 @@ fn log_frame() -> FrameType {
     free_frame(2)
 }
 
+/// Eclypsion radii: fields and buttons use --radius-lg, cards --radius-xl and
+/// the floating islands --radius-2xl.
+const RADIUS_LG: i32 = 8;
+const RADIUS_XL: i32 = 12;
+const RADIUS_2XL: i32 = 16;
+
+/// One-pixel light edge along the top of a raised surface: FLTK has no inset
+/// shadows, so this line stands in for the web client's glass highlight.
+fn draw_top_highlight(x: i32, y: i32, w: i32, base: Rgb24, inset: i32) {
+    let skin = skin();
+    if skin.light || w <= 2 * inset {
+        return;
+    }
+    draw::set_draw_color(Color::from(base.mix(Rgb24::hex(0xffffff), 55)));
+    draw::draw_line(x + inset, y + 1, x + w - inset - 1, y + 1);
+}
+
+fn rgb24_of(color: Color) -> Rgb24 {
+    let (r, g, b) = color.to_rgb();
+    Rgb24::hex(((r as u32) << 16) | ((g as u32) << 8) | b as u32)
+}
+
 fn draw_field_box(x: i32, y: i32, w: i32, h: i32, color: Color) {
     let skin = skin();
     draw::set_draw_color(color);
-    draw::draw_rounded_rectf(x, y, w, h, 10);
+    draw::draw_rounded_rectf(x, y, w, h, RADIUS_LG);
     draw::set_draw_color(Color::from(skin.border));
-    draw::draw_rounded_rect(x, y, w - 1, h - 1, 10);
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, RADIUS_LG);
 }
 
 fn draw_card_box(x: i32, y: i32, w: i32, h: i32, color: Color) {
     let skin = skin();
     draw::set_draw_color(color);
-    draw::draw_rounded_rectf(x, y, w, h, 14);
+    draw::draw_rounded_rectf(x, y, w, h, RADIUS_XL);
+    draw_top_highlight(x, y, w, rgb24_of(color), RADIUS_XL);
     draw::set_draw_color(Color::from(skin.border));
-    draw::draw_rounded_rect(x, y, w - 1, h - 1, 14);
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, RADIUS_XL);
 }
 
 fn draw_log_box(x: i32, y: i32, w: i32, h: i32, color: Color) {
     let skin = skin();
     draw::set_draw_color(color);
-    draw::draw_rounded_rectf(x, y, w, h, 12);
+    draw::draw_rounded_rectf(x, y, w, h, RADIUS_XL);
     draw::set_draw_color(Color::from(skin.border));
-    draw::draw_rounded_rect(x, y, w - 1, h - 1, 12);
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, RADIUS_XL);
 }
 
-/// Ambient glow backdrop for a page: the palette's tinted top fades into the
-/// flat background, echoing the radial "glow from the top" gradients of the
-/// original anime presets.
+/// A soft radial bloom: concentric discs from the rim inwards, each one a
+/// little closer to `tint`. FLTK has no alpha, so the falloff is baked into
+/// the colors; the per-step change stays below one 8-bit level, so no banding
+/// shows. `strength` is the centre mix in thousandths.
+fn draw_bloom(cx: i32, cy: i32, radius: i32, base: Rgb24, tint: Rgb24, strength: u32) {
+    const STEPS: i32 = 48;
+    for i in 0..STEPS {
+        let d = 2 * radius * (STEPS - i) / STEPS;
+        if d < 2 {
+            break;
+        }
+        // Quadratic falloff from the rim (0) to the centre (strength).
+        let t = (i + 1) as u32 * 1000 / STEPS as u32;
+        let mix = strength * t / 1000 * t / 1000;
+        fill_circle(cx, cy, d, Color::from(base.mix(tint, mix)));
+    }
+}
+
+/// Ambient backdrop: the flat page color lit by two soft blooms - the accent
+/// companion from the top left and a cool teal from the bottom right - the
+/// same aurora the web client's glass panels sit on. The blooms do not
+/// overlap, so each can paint its own rim in the base color.
 fn draw_page_glow(f: &mut Frame) {
     let skin = skin();
     let (x, y) = (f.x(), f.y());
     let (w, h) = (f.w(), f.h());
-    // The haze covers the upper third; below it stays the base color.
-    let band = (h / 3).max(1);
-    for row in 0..band {
-        let t = ((row * 1000) / band) as u32;
-        draw::set_draw_color(Color::from(skin.bg_end.mix(skin.bg_start, 1000 - t)));
-        draw::draw_rectf(x, y + row, w, 1);
-    }
     draw::set_draw_color(Color::from(skin.bg_end));
-    draw::draw_rectf(x, y + band, w, h - band);
+    draw::draw_rectf(x, y, w, h);
+    let (main, side) = if skin.light { (170, 110) } else { (260, 110) };
+    draw_bloom(
+        x + w * 30 / 100,
+        y - h / 10,
+        w * 70 / 100,
+        skin.bg_end,
+        skin.bloom,
+        main,
+    );
+    draw_bloom(
+        x + w + 40,
+        y + h + 60,
+        w * 56 / 100,
+        skin.bg_end,
+        Rgb24::hex(0x35c9c2),
+        side,
+    );
 }
 
-/// Primary action in the server card: a solid accent pill with the launcher's
-/// fill/hover pair and a small press contraction, all painted by hand.
+/// Primary action of the hero card. Stopped: a solid accent button with a
+/// glass sheen and a soft accent shadow. Running: a calm danger-subtle
+/// "stop" button (Eclypsion --color-fill-danger-subtle + text-danger).
 fn draw_primary_button(b: &mut Button) {
     let skin = skin();
     let hover = {
@@ -1204,22 +1417,57 @@ fn draw_primary_button(b: &mut Button) {
     };
     let (x, y, w, h) = (b.x(), b.y(), b.w(), b.h());
     let live = SERVER_LIVE.load(Ordering::Relaxed);
-    let base_color = if live { skin.danger } else { skin.accent };
     let pressed = b.value();
+    // The press is painted as a 2px smaller button.
+    let inset = if pressed { 2 } else { 0 };
+    // The bottom 4px of the widget hold the shadow, so everything stays
+    // inside the widget's own box.
+    const SHADOW: i32 = 4;
+    let (bx, by, bw, bh) = (x + inset, y + inset, w - 2 * inset, h - SHADOW - 2 * inset);
+
+    // Clear the widget area to the card surface first: the button switches
+    // between shapes and the old one must not linger.
+    draw::set_draw_color(Color::from(skin.surface));
+    draw::draw_rectf(x, y, w, h);
+
+    if live {
+        let fill = skin
+            .surface
+            .mix(skin.danger, 150 + (70.0 * hover) as u32 + if pressed { 60 } else { 0 });
+        draw::set_draw_color(Color::from(fill));
+        draw::draw_rounded_rectf(bx, by, bw, bh, RADIUS_LG);
+        draw::set_draw_color(Color::from(skin.surface.mix(skin.danger, 320)));
+        draw::draw_rounded_rect(bx, by, bw - 1, bh - 1, RADIUS_LG);
+        let label = if skin.light {
+            skin.danger.mix(Rgb24::hex(0x000000), 160)
+        } else {
+            skin.danger.mix(Rgb24::hex(0xffffff), 380)
+        };
+        draw::set_font(Font::HelveticaBold, 14);
+        draw::set_draw_color(Color::from(label));
+        draw::draw_text2(&b.label(), bx, by, bw, bh, Align::Center);
+        return;
+    }
+
     let base = if pressed {
-        base_color.mix(Rgb24::hex(0x000000), 120)
-    } else if live {
-        skin.danger.mix(Rgb24::hex(0xffffff), (90.0 * hover) as u32)
+        skin.accent.mix(Rgb24::hex(0x000000), 120)
     } else {
         skin.accent.mix(skin.accent_pressed, (1000.0 * hover) as u32)
     };
-    // The 0.96 press scale is painted as a smaller pill.
-    let inset = if pressed { 2 } else { 0 };
+    let halo = skin.surface.mix(skin.accent, 220);
+    draw::set_draw_color(Color::from(halo));
+    draw::draw_rounded_rectf(x + 8, y + SHADOW, w - 16, h - SHADOW, RADIUS_LG + 2);
     draw::set_draw_color(Color::from(base));
-    draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, (h - 2 * inset) / 2);
-    draw::set_font(Font::HelveticaBold, 15);
+    draw::draw_rounded_rectf(bx, by, bw, bh, RADIUS_LG);
+    // Glass sheen: the upper half is lifted a touch, plus a crisp top edge.
+    draw::set_draw_color(Color::from(base.mix(Rgb24::hex(0xffffff), 45)));
+    draw::draw_rounded_rectf(bx, by, bw, bh / 2, RADIUS_LG);
+    draw::draw_rectf(bx, by + RADIUS_LG, bw, bh / 2 - RADIUS_LG);
+    draw::set_draw_color(Color::from(base.mix(Rgb24::hex(0xffffff), 170)));
+    draw::draw_line(bx + RADIUS_LG, by + 1, bx + bw - RADIUS_LG - 1, by + 1);
+    draw::set_font(Font::HelveticaBold, 14);
     draw::set_draw_color(Color::White);
-    draw::draw_text2(&b.label(), x, y, w, h, Align::Center);
+    draw::draw_text2(&b.label(), bx, by, bw, bh, Align::Center);
 }
 
 /// Theme picker: a field-shaped pill showing the active palette plus a
@@ -1232,15 +1480,21 @@ fn draw_choice(c: &mut Choice) {
     };
     let (x, y, w, h) = (c.x(), c.y(), c.w(), c.h());
     draw::set_draw_color(Color::from(
-        skin.surface.mix(skin.pill, (800.0 * hover) as u32),
+        field_color(&skin).mix(skin.pill, (700.0 * hover) as u32),
     ));
-    draw::draw_rounded_rectf(x, y, w, h, 10);
+    draw::draw_rounded_rectf(x, y, w, h, RADIUS_LG);
     draw::set_draw_color(Color::from(skin.border));
-    draw::draw_rounded_rect(x, y, w - 1, h - 1, 10);
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, RADIUS_LG);
+    // A swatch of the palette's accent in front of its name.
+    let swatch = PALETTES
+        .get(c.value().max(0) as usize)
+        .map(|p| p.accent)
+        .unwrap_or(skin.accent);
+    fill_circle(x + 18, y + h / 2, 12, Color::from(swatch));
     let label = c.text(c.value().max(0)).unwrap_or_default();
     draw::set_font(Font::Helvetica, 13);
     draw::set_draw_color(Color::from(skin.text));
-    draw::draw_text(&label, x + 14, y + h / 2 + 5);
+    draw::draw_text(&label, x + 32, y + h / 2 + 5);
     let cx = x + w - 20;
     let cy = y + h / 2;
     draw::set_draw_color(Color::from(skin.dim));
@@ -1254,28 +1508,28 @@ fn fill_circle(cx: i32, cy: i32, d: i32, color: Color) {
     draw::draw_circle_fill(cx - d / 2, cy - d / 2, d, color);
 }
 
-/// Toggle switch drawn in place of the stock check box: a compact 46x26 track
-/// with a 20px white knob and a soft shadow. The knob follows the shared
-/// spring, so toggling has a small, springy overshoot.
+
+
+
+/// Toggle switch drawn in place of the stock check box: an iOS-like 42x26
+/// track with a 20px white knob and a soft shadow, the title on the left.
+/// The knob follows the shared spring, so toggling has a small overshoot.
 fn draw_switch(c: &mut CheckButton, which: Switch) {
     let skin = skin();
     let p = switch_spring(which).clamp(-0.08, 1.08);
-    let track_w = 46;
+    let track_w = 42;
     let track_h = 26;
     let (x, y) = (c.x(), c.y());
     let tx = x + c.w() - track_w;
-    let ty = y + 2;
+    let ty = y + (c.h() - track_h) / 2;
     let cy = ty + track_h / 2;
     let on = p.clamp(0.0, 1.0);
     let track = skin.track.mix(skin.accent, (1000.0 * on) as u32);
     draw::set_draw_color(Color::from(track));
     draw::draw_rounded_rectf(tx, ty, track_w, track_h, track_h / 2);
-    let track_border = skin.border.mix(skin.accent_pressed, (1000.0 * on) as u32);
-    draw::set_draw_color(Color::from(track_border));
-    draw::draw_rounded_rect(tx, ty, track_w - 1, track_h - 1, track_h / 2);
 
     let title_w = (c.w() - track_w - 16).max(80);
-    draw::set_font(Font::HelveticaBold, 13);
+    draw::set_font(Font::Helvetica, 14);
     draw::set_draw_color(Color::from(if c.active() {
         skin.text
     } else {
@@ -1294,16 +1548,13 @@ fn draw_switch(c: &mut CheckButton, which: Switch) {
     let pad = 3;
     let travel = (track_w - knob_d - 2 * pad) as f32;
     let kx = tx + pad + knob_d / 2 + (travel * p) as i32;
-    let shadow = track.mix(Rgb24::hex(0x000000), 300);
-    fill_circle(kx, cy + 1, knob_d + 4, Color::from(shadow));
-    let rim = Rgb24::hex(0xffffff).mix(skin.track, 320);
-    fill_circle(kx, cy, knob_d + 2, Color::from(rim));
+    let shadow = track.mix(Rgb24::hex(0x000000), 260);
+    fill_circle(kx, cy + 1, knob_d + 2, Color::from(shadow));
     fill_circle(kx, cy, knob_d, Color::White);
 }
 
-/// Sidebar entry: a pill for the active page plus a crisp SVG line icon (house
-/// for home, gear for settings). The selected row is a softly lifted surface
-/// with an accent icon, an accent rail and a bold label.
+/// Sidebar entry: a soft raised pill for the active page (with the glass top
+/// edge) plus a crisp SVG line icon, accent-tinted when active.
 fn draw_nav_item(b: &mut Button, home: bool) {
     let skin = skin();
     let active = *HOME_ACTIVE.lock().unwrap() == home;
@@ -1314,14 +1565,13 @@ fn draw_nav_item(b: &mut Button, home: bool) {
     let inset = if pressed { 1 } else { 0 };
     if active {
         draw::set_draw_color(Color::from(skin.pill));
-        draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, 10);
-        draw::set_draw_color(Color::from(skin.accent_soft));
-        draw::draw_rounded_rectf(x + 8, y + h / 2 - 9, 3, 18, 2);
+        draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, RADIUS_LG + 2);
+        draw_top_highlight(x + inset, y + inset, w - 2 * inset, skin.pill, RADIUS_LG + 2);
     } else if hovered {
         draw::set_draw_color(Color::from(
             skin.nav_bg.mix(skin.pill, (550.0 * hover) as u32),
         ));
-        draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, 10);
+        draw::draw_rounded_rectf(x + inset, y + inset, w - 2 * inset, h - 2 * inset, RADIUS_LG + 2);
     }
     let icon_color = if active {
         skin.accent_soft
@@ -1338,10 +1588,10 @@ fn draw_nav_item(b: &mut Button, home: bool) {
             ICON_SETTINGS_SVG
         },
         icon_color,
-        x + 20,
-        y + (h - 22) / 2,
-        22,
-        22,
+        x + 12,
+        y + (h - 20) / 2,
+        20,
+        20,
     );
     draw::set_draw_color(Color::from(if active {
         skin.text
@@ -1358,16 +1608,16 @@ fn draw_nav_item(b: &mut Button, home: bool) {
     );
     draw::draw_text2(
         &b.label(),
-        x + 52,
+        x + 42,
         y,
-        w - 64,
+        w - 52,
         h,
         Align::Left | Align::Inside,
     );
 }
 
-/// Small caps eyebrow labels get the launcher's letter spacing; FLTK has no
-/// tracking, so the string is drawn character by character.
+/// Small caps eyebrow labels get the design set's letter spacing; FLTK has
+/// no tracking, so the string is drawn character by character.
 fn draw_eyebrow(f: &mut Frame) {
     let skin = skin();
     let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
@@ -1376,8 +1626,8 @@ fn draw_eyebrow(f: &mut Frame) {
         return;
     }
     draw::set_font(Font::HelveticaBold, 10);
-    draw::set_draw_color(Color::from(skin.log_text));
-    let spacing = 1.4f64;
+    draw::set_draw_color(Color::from(skin.dim));
+    let spacing = 1.2f64;
     let mut total = spacing * label.chars().count().saturating_sub(1) as f64;
     for ch in label.chars() {
         total += draw::width(&ch.to_string());
@@ -1392,17 +1642,159 @@ fn draw_eyebrow(f: &mut Frame) {
     }
 }
 
+/// Hairline between the rows of a grouped settings card.
+fn draw_divider(f: &mut Frame) {
+    let skin = skin();
+    draw::set_draw_color(Color::from(skin.surface.mix(skin.pill, 700)));
+    draw::draw_line(f.x(), f.y(), f.x() + f.w() - 1, f.y());
+}
+
+/// Hero visual of the stopped server: a soft accent tile carrying the
+/// proximity mark as a radar - two rings, the dot and the satellite. Static.
+fn draw_hero_visual(f: &mut Frame) {
+    let skin = skin();
+    let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
+    // Tile: the card surface tinted with the accent, plus the glass edge.
+    let tile = skin.surface.mix(skin.accent, if skin.light { 70 } else { 110 });
+    draw::set_draw_color(Color::from(tile));
+    draw::draw_rounded_rectf(x, y, w, h, RADIUS_XL);
+    draw_top_highlight(x, y, w, tile, RADIUS_XL);
+    draw::set_draw_color(Color::from(tile.mix(skin.accent_soft, 160)));
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, RADIUS_XL);
+
+    let cx = (x + w / 2) as f64;
+    let cy = (y + h / 2) as f64;
+    // A soft glow in the middle.
+    for (d, mix) in [(118, 60u32), (96, 110), (76, 160)] {
+        fill_circle(cx as i32, cy as i32, d, Color::from(tile.mix(skin.accent, mix)));
+    }
+
+    // The mark: outer faint ring, main ring (drawn twice for weight), the
+    // centre dot and the satellite at 45 degrees.
+    draw::set_draw_color(Color::from(tile.mix(skin.accent_soft, 380)));
+    draw::draw_circle(cx, cy, 42.0);
+    draw::set_draw_color(Color::from(skin.accent_soft));
+    draw::draw_circle(cx, cy, 28.0);
+    draw::draw_circle(cx, cy, 27.0);
+    draw::draw_circle(cx, cy, 29.0);
+    fill_circle(cx as i32, cy as i32, 18, Color::from(skin.accent_soft));
+    let sat = 28.0 * std::f64::consts::FRAC_1_SQRT_2;
+    fill_circle(
+        (cx + sat) as i32,
+        (cy - sat) as i32,
+        14,
+        Color::from(tile),
+    );
+    fill_circle(
+        (cx + sat) as i32,
+        (cy - sat) as i32,
+        10,
+        Color::from(skin.accent_soft),
+    );
+}
+
+/// Square ghost button next to the address field: a copy glyph that turns
+/// into a check for a moment after the address was copied.
+fn draw_copy_button(b: &mut Button) {
+    let skin = skin();
+    let (x, y, w, h) = (b.x(), b.y(), b.w(), b.h());
+    let copied = {
+        let m = MOTION.lock().unwrap();
+        m.copied
+    };
+    let fill = if b.value() {
+        skin.surface.mix(skin.pill, 1000)
+    } else {
+        field_color(&skin)
+    };
+    draw::set_draw_color(Color::from(fill));
+    draw::draw_rounded_rectf(x, y, w, h, RADIUS_LG);
+    draw::set_draw_color(Color::from(skin.border));
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, RADIUS_LG);
+    let (glyph, color) = if copied > 0.0 {
+        (ICON_CHECK_SVG, skin.success)
+    } else {
+        (ICON_COPY_SVG, skin.log_text)
+    };
+    draw_glyph(glyph, color, x + (w - 16) / 2, y + (h - 16) / 2, 16, 16);
+}
+
+/// The settings mirrored on the home page.
+#[derive(Clone, Copy)]
+enum Tile {
+    Port,
+    Access,
+    Codec,
+}
+
+/// Small glass tile: eyebrow caption, a value and a status dot. Values are
+/// read from the settings widgets at paint time, so they are always current.
+fn draw_stat_tile(f: &mut Frame, tile: Tile) {
+    let skin = skin();
+    let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
+    draw_card_box(x, y, w, h, Color::from(skin.surface));
+
+    let (caption, value, mono, dot) = match tile {
+        Tile::Port => {
+            let port = app::widget_from_id::<IntInput>("input_port")
+                .map(|i| i.value())
+                .unwrap_or_default();
+            ("ПОРТ", if port.is_empty() { "—".to_string() } else { port }, true, None)
+        }
+        Tile::Access => {
+            let protected = app::widget_from_id::<Input>("input_access")
+                .map(|i| !i.value().is_empty())
+                .unwrap_or(false);
+            if protected {
+                ("ДОСТУП", "По коду".to_string(), false, Some(skin.success))
+            } else {
+                ("ДОСТУП", "Открытый".to_string(), false, Some(skin.dim))
+            }
+        }
+        Tile::Codec => {
+            let value = if checked("check_nvenc") {
+                "NVENC".to_string()
+            } else if checked("check_native") {
+                app::widget_from_id::<CheckButton>("check_native")
+                    .map(|c| c.label())
+                    .unwrap_or_default()
+            } else {
+                "x264 · CPU".to_string()
+            };
+            ("КОДЕК", value, false, None)
+        }
+    };
+
+    // Caption with the eyebrow's tracking.
+    draw::set_font(Font::HelveticaBold, 10);
+    draw::set_draw_color(Color::from(skin.dim));
+    let mut cx = (x + 16) as f64;
+    for ch in caption.chars() {
+        let glyph = ch.to_string();
+        draw::draw_text(&glyph, cx as i32, y + 26);
+        cx += draw::width(&glyph) + 1.2;
+    }
+
+    let mut vx = x + 16;
+    if let Some(dot) = dot {
+        fill_circle(vx + 4, y + 50, 8, Color::from(dot));
+        vx += 16;
+    }
+    draw::set_font(if mono { Font::Courier } else { Font::HelveticaBold }, 16);
+    draw::set_draw_color(Color::from(skin.text));
+    draw::draw_text2(&value, vx, y + 38, w - (vx - x) - 12, 24, Align::Left | Align::Inside);
+}
+
 /// Sidebar island: the floating rail the navigation lives on.
 fn draw_nav_island(f: &mut Frame) {
     let skin = skin();
     let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
     draw::set_draw_color(Color::from(skin.nav_bg));
-    draw::draw_rounded_rectf(x, y, w, h, 16);
-    // A one-pixel highlight along the top edge, like the launcher islands.
-    draw::set_draw_color(Color::from(skin.nav_bg.mix(skin.text, 60)));
-    draw::draw_line(x + 18, y + 1, x + w - 18, y + 1);
+    draw::draw_rounded_rectf(x, y, w, h, RADIUS_2XL);
+    // A one-pixel highlight along the top edge, like the glass islands.
+    draw_top_highlight(x, y, w, skin.nav_bg, RADIUS_2XL);
     draw::set_draw_color(Color::from(skin.border));
-    draw::draw_rounded_rect(x, y, w - 1, h - 1, 16);
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, RADIUS_2XL);
 }
 
 /// Brand tile: a rounded accent square carrying the proximity mark.
@@ -1411,14 +1803,17 @@ fn draw_brand_mark(f: &mut Frame) {
     let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
     // A soft accent halo lifts the tile from the nav island.
     draw::set_draw_color(Color::from(skin.nav_bg.mix(skin.accent, 130)));
-    draw::draw_rounded_rectf(x - 2, y - 2, w + 4, h + 4, 13);
+    draw::draw_rounded_rectf(x - 2, y - 1, w + 4, h + 5, RADIUS_LG + 3);
     draw::set_draw_color(Color::from(skin.accent));
-    draw::draw_rounded_rectf(x, y, w, h, 10);
-    // One-pixel top highlight, like the launcher's raised surfaces.
-    draw::set_draw_color(Color::from(skin.accent.mix(Rgb24::hex(0xffffff), 150)));
+    draw::draw_rounded_rectf(x, y, w, h, RADIUS_LG + 2);
+    // Glass sheen on the upper half and a crisp top edge, like the web tile.
+    draw::set_draw_color(Color::from(skin.accent.mix(Rgb24::hex(0xffffff), 90)));
+    draw::draw_rounded_rectf(x, y, w, h / 2, RADIUS_LG + 2);
+    draw::draw_rectf(x, y + RADIUS_LG + 2, w, h / 2 - RADIUS_LG - 2);
+    draw::set_draw_color(Color::from(skin.accent.mix(Rgb24::hex(0xffffff), 220)));
     draw::draw_line(x + 9, y + 1, x + w - 9, y + 1);
     draw::set_draw_color(Color::from(skin.accent.mix(Rgb24::hex(0x000000), 120)));
-    draw::draw_rounded_rect(x, y, w - 1, h - 1, 10);
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, RADIUS_LG + 2);
     draw_glyph(
         LOGO_GLYPH_SVG,
         Rgb24::hex(0xffffff),
@@ -1432,8 +1827,8 @@ fn draw_brand_mark(f: &mut Frame) {
 /// Whether the proximity server is currently accepting connections.
 static SERVER_LIVE: AtomicBool = AtomicBool::new(false);
 
-/// Motion state of the shell: hover fades, switch springs, the live pulse and
-/// the status-dot pop/ripple. A single 60 Hz ticker advances everything and
+/// Motion state of the shell: hover fades, switch springs, the status
+/// crossfade and the copy check. A single 60 Hz ticker advances everything and
 /// only redraws widgets whose value actually moved.
 struct UiMotion {
     nav_home: f32,
@@ -1445,9 +1840,8 @@ struct UiMotion {
     sw_nvenc: Spring,
     sw_wayland: Spring,
     status: Spring,
-    status_pop: f32,
-    ping: f32,
-    pulse: f32,
+    /// Countdown of the "copied" check on the copy button.
+    copied: f32,
 }
 
 #[derive(Clone, Copy)]
@@ -1474,9 +1868,7 @@ static MOTION: Mutex<UiMotion> = Mutex::new(UiMotion {
     sw_nvenc: Spring { x: 0.0, v: 0.0 },
     sw_wayland: Spring { x: 0.0, v: 0.0 },
     status: Spring { x: 0.0, v: 0.0 },
-    status_pop: 0.0,
-    ping: 0.0,
-    pulse: 0.0,
+    copied: 0.0,
 });
 
 fn pointer_over<W>(id: &str) -> bool
@@ -1551,6 +1943,13 @@ fn ui_motion_tick() {
     let mut dirty: Vec<&'static str> = Vec::new();
     let mut m = MOTION.lock().unwrap();
 
+    if m.copied > 0.0 {
+        m.copied = (m.copied - dt / 1.6).max(0.0);
+        if m.copied == 0.0 {
+            dirty.push("btn_copy");
+        }
+    }
+
     if approach(
         &mut m.nav_home,
         if pointer_over::<Button>("nav_home") { 1.0 } else { 0.0 },
@@ -1608,21 +2007,6 @@ fn ui_motion_tick() {
     if spring_step(&mut m.status, if live { 1.0 } else { 0.0 }, dt) {
         dirty.push("status_pill");
     }
-    if m.status_pop > 0.0 {
-        m.status_pop = (m.status_pop - dt * 2.2).max(0.0);
-        dirty.push("status_pill");
-    }
-    if m.ping > 0.0 {
-        m.ping = (m.ping - dt * 1.7).max(0.0);
-        dirty.push("status_pill");
-    }
-    if live {
-        m.pulse = (m.pulse + dt * 2.4) % std::f32::consts::TAU;
-        dirty.push("status_pill");
-    } else if m.pulse != 0.0 {
-        m.pulse = 0.0;
-        dirty.push("status_pill");
-    }
 
     drop(m);
     for id in dirty {
@@ -1650,81 +2034,64 @@ fn hover_value(home: bool) -> f32 {
     }
 }
 
-/// Kick the status indicator when the server changes state: the dot gets a
-/// short spring-pop and a ripple travels out from it.
+/// Kick the status crossfade when the server changes state.
 fn kick_status(live: bool) {
-    let mut motion = MOTION.lock().unwrap();
-    motion.status.v = if live { 9.0 } else { -9.0 };
-    motion.status_pop = 1.0;
-    motion.ping = 1.0;
+    MOTION.lock().unwrap().status.v = if live { 9.0 } else { -9.0 };
 }
 
-/// Status pill at the bottom of the sidebar: an animated dot, a ripple on
-/// state changes and a short label. The dot is deliberately centred with the
-/// text via `draw_text2`, so it stays perfectly aligned at every state.
+/// Server state card at the foot of the sidebar: a power glyph in a tinted
+/// tile, the state in bold and a one-line hint underneath. Nothing loops; the
+/// tile and glyph only cross-fade to green when the server starts or stops.
 fn draw_status_pill(f: &mut Frame) {
     let skin = skin();
     let (x, y, w, h) = (f.x(), f.y(), f.w(), f.h());
     let live = SERVER_LIVE.load(Ordering::Relaxed);
-    let (t, pop_phase, ping, pulse) = {
-        let motion = MOTION.lock().unwrap();
-        (motion.status.x, motion.status_pop, motion.ping, motion.pulse)
-    };
-    let on = t.clamp(0.0, 1.0);
-    let pop = (pop_phase * std::f32::consts::PI).sin().max(0.0) * 0.55;
+    let on = MOTION.lock().unwrap().status.x.clamp(0.0, 1.0);
+    let on_k = (1000.0 * on) as u32;
 
-    let pill = skin.pill.mix(skin.success, (40.0 * on) as u32);
-    draw::set_draw_color(Color::from(pill));
-    draw::draw_rounded_rectf(x, y, w, h, h / 2);
-    draw::set_draw_color(Color::from(
-        skin.border.mix(skin.success, (120.0 * on) as u32),
-    ));
-    draw::draw_rounded_rect(x, y, w - 1, h - 1, h / 2);
+    // Card: the sidebar glass with a green edge while the server runs.
+    let card = skin.nav_bg.mix(skin.pill, 600);
+    draw::set_draw_color(Color::from(card));
+    draw::draw_rounded_rectf(x, y, w, h, RADIUS_XL);
+    draw_top_highlight(x, y, w, card, RADIUS_XL);
+    draw::set_draw_color(Color::from(skin.border.mix(skin.success, (160.0 * on) as u32)));
+    draw::draw_rounded_rect(x, y, w - 1, h - 1, RADIUS_XL);
 
-    let cx = x + 17;
-    let cy = y + h / 2;
-    let bob = (pop_phase * std::f32::consts::PI).sin().max(0.0) * 2.0;
-    let dot_cy = cy - bob.round() as i32;
-    let dot_d = ((10.0 + 2.0 * on) * (1.0 + pop)).round() as i32;
+    // Icon tile: 32px square, grey when stopped and green when live.
+    const TILE: i32 = 32;
+    let tx = x + 12;
+    let ty = y + (h - TILE) / 2;
+    let tile_off = skin.surface.mix(skin.dim, 120);
+    let tile_on = skin.surface.mix(skin.success, 220);
+    draw::set_draw_color(Color::from(tile_off.mix(tile_on, on_k)));
+    draw::draw_rounded_rectf(tx, ty, TILE, TILE, RADIUS_LG);
 
-    // Soft halo while the server is on.
-    if on > 0.01 {
-        for (extra, mix) in [(7i32, 900u32), (14, 945)] {
-            let d = dot_d + extra;
-            let halo = skin.success.mix(skin.pill, mix);
-            draw::set_draw_color(Color::from(halo));
-            fill_circle(cx, dot_cy, d, Color::from(halo));
-        }
-    }
+    // Power glyph: a 300 degree arc open at the top, with a stem through the gap.
+    let (gx, gy) = (tx + TILE / 2, ty + TILE / 2);
+    draw::set_draw_color(Color::from(skin.dim.mix(skin.success, on_k)));
+    draw::set_line_style(draw::LineStyle::Solid, 2);
+    draw::draw_arc(gx - 7, gy - 7, 14, 14, 120.0, 420.0);
+    draw::draw_line(gx, gy - 9, gx, gy - 1);
+    draw::set_line_style(draw::LineStyle::Solid, 0);
 
-    // One-shot ripple after a state change.
-    if ping > 0.0 {
-        let r = dot_d as f64 / 2.0 + 2.0 + (1.0 - ping) as f64 * 8.0;
-        let fade = 1000u32 - (700.0 * ping) as u32;
-        let ripple = if live { skin.success } else { skin.dim };
-        draw::set_draw_color(Color::from(ripple.mix(skin.pill, fade)));
-        draw::draw_circle(cx as f64, dot_cy as f64, r);
-    }
-
-    // Gentle live pulse.
-    if live && on > 0.35 {
-        let p = (pulse.sin() + 1.0) * 0.5;
-        let r = dot_d as f64 / 2.0 + 1.0 + p as f64 * 6.0;
-        draw::set_draw_color(Color::from(skin.success.mix(skin.pill, 820)));
-        draw::draw_circle(cx as f64, dot_cy as f64, r);
-    }
-
-    let dot = skin.dim.mix(skin.success, (1000.0 * on) as u32);
-    fill_circle(cx, dot_cy, dot_d, Color::from(dot));
-
-    draw::set_draw_color(Color::from(skin.dim.mix(skin.text, (1000.0 * on) as u32)));
+    // Title and hint, left-aligned after the tile.
+    let text_x = tx + TILE + 10;
+    let text_w = x + w - text_x - 8;
+    draw::set_draw_color(Color::from(skin.text));
     draw::set_font(Font::HelveticaBold, 12);
+    draw::draw_text2(&f.label(), text_x, y + 11, text_w, 18, Align::Left | Align::Inside);
+    draw::set_draw_color(Color::from(skin.dim));
+    draw::set_font(Font::Helvetica, 11);
     draw::draw_text2(
-        &f.label(),
-        x + 34,
-        y,
-        w - 44,
-        h,
+        if live {
+            "Ждёт подключения"
+        } else {
+            "Нажми «Запустить»"
+        },
+        text_x,
+        y + 30,
+        text_w,
+        16,
         Align::Left | Align::Inside,
     );
 }

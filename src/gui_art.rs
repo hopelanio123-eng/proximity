@@ -18,6 +18,10 @@ pub const LOGO_SVG: &str = include_str!("../assets/logo.svg");
 pub const LOGO_GLYPH_SVG: &str = include_str!("../assets/logo-glyph.svg");
 pub const ICON_HOME_SVG: &str = include_str!("../assets/icons/home.svg");
 pub const ICON_SETTINGS_SVG: &str = include_str!("../assets/icons/settings.svg");
+/// Inline line icons for the address row (24px grid, 1.8px stroke). Statics,
+/// not consts, so their address - the glyph cache key - is stable.
+pub static ICON_COPY_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="__COLOR__" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.5"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5"/></svg>"#;
+pub static ICON_CHECK_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="__COLOR__" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>"#;
 
 thread_local! {
     static GLYPHS: RefCell<HashMap<(usize, u32, i32, i32), SvgImage>> = RefCell::new(HashMap::new());
